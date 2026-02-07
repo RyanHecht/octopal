@@ -9,7 +9,8 @@ Powered by the [GitHub Copilot SDK](https://github.com/github/copilot-sdk).
 ### Prerequisites
 
 - **Node.js 24+** (install via [fnm](https://github.com/Schniz/fnm): `fnm install 24`)
-- **GitHub Copilot** access (authenticated via `gh` CLI or environment variable)
+- **GitHub CLI (`gh`)** — [install](https://cli.github.com/), then `gh auth login`
+- **GitHub Copilot** access (authenticated via `gh` CLI)
 
 ### Setup
 

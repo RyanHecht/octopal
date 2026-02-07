@@ -276,12 +276,15 @@ Commands:
 A standalone script that creates a new PARA vault and walks the user through an interactive interview. It uses the Copilot SDK's `onUserInputRequest` handler to ask questions in the terminal.
 
 **How it works:**
-1. Creates the vault directory structure (PARA folders + templates)
-2. Starts a Copilot session with a system prompt that instructs the AI to conduct an interview
-3. The AI uses `ask_user` to ask questions one at a time (name, projects, areas, tasks, etc.)
-4. Each user answer comes through the `onUserInputRequest` handler, which uses Node's `readline` to prompt in the terminal
-5. After ~8-10 questions, the AI uses write_note/append_to_note tools to populate the vault
-6. Finally commits everything to git
+1. Checks that `gh` CLI is installed and authenticated
+2. Asks for a GitHub repo name, checks if it exists via `gh repo view`, creates it with `gh repo create` if not
+3. Clones the repo to `~/.octopal/vault/` using `gh repo clone` (handles auth)
+4. Creates the PARA directory structure and copies templates
+5. Starts a Copilot session with a system prompt that instructs the AI to conduct an interview
+6. The AI uses `ask_user` to ask questions one at a time (name, projects, areas, tasks, etc.)
+7. Each user answer comes through the `onUserInputRequest` handler, which uses Node's `readline` to prompt in the terminal
+8. After ~8-10 questions, the AI uses write_note/append_to_note tools to populate the vault
+9. Finally commits everything to git
 
 **The `onUserInputRequest` pattern:**
 ```typescript
@@ -534,7 +537,7 @@ The SDK uses Zod v4. Make sure `packages/core/package.json` depends on `"zod": "
 Run `octopal setup` to create `~/.octopal/config.json` and clone your vault. You can also set `OCTOPAL_VAULT_PATH` and `OCTOPAL_VAULT_REMOTE` environment variables as overrides.
 
 ### Copilot auth issues
-Make sure you're logged in: `gh auth login` or set `GITHUB_TOKEN` environment variable.
+Make sure you're logged in: `gh auth login`. The `gh` CLI handles all git and API authentication.
 
 ### Node version errors
 This project requires Node 24+. Use `fnm use 24` or install via `fnm install 24`.

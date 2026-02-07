@@ -3,6 +3,8 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as readline from "node:readline/promises";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { CopilotClient, defineTool } from "@github/copilot-sdk";
 import { z } from "zod";
 import {
@@ -11,6 +13,8 @@ import {
   loadConfig,
   saveConfig,
 } from "@octopal/core";
+
+const exec = promisify(execFile);
 
 const rl = readline.createInterface({
   input: process.stdin,
@@ -70,6 +74,19 @@ tags: [relevant, tags]
 async function main() {
   console.log("🐙 Welcome to Octopal!\n");
 
+  // Check that gh is installed and authenticated
+  try {
+    await exec("gh", ["auth", "status"]);
+  } catch {
+    console.error(
+      "Error: The GitHub CLI (gh) is required and must be authenticated.\n\n" +
+        "  Install: https://cli.github.com/\n" +
+        "  Then run: gh auth login\n",
+    );
+    rl.close();
+    process.exit(1);
+  }
+
   const config = await loadConfig();
 
   // Step 1: Get the vault repo
@@ -90,11 +107,40 @@ async function main() {
     }
   }
 
-  const remoteUrl = `git@github.com:${vaultRepo}.git`;
+  // Step 2: Check if repo exists, create if it doesn't
+  let repoExists = false;
+  try {
+    await exec("gh", ["repo", "view", vaultRepo, "--json", "name"]);
+    repoExists = true;
+    console.log(`✓ Found existing repo: ${vaultRepo}`);
+  } catch {
+    // Repo doesn't exist
+  }
 
-  // Save config
+  if (!repoExists) {
+    console.log(`\nRepo ${vaultRepo} doesn't exist yet. Creating it...\n`);
+    const visibility = await rl.question(
+      "Should the vault repo be private or public? [private]: ",
+    );
+    const flag = visibility.trim().toLowerCase() === "public" ? "--public" : "--private";
+    try {
+      await exec("gh", [
+        "repo", "create", vaultRepo,
+        flag,
+        "--description", "Personal PARA knowledge vault managed by Octopal",
+      ]);
+      console.log(`✓ Created ${flag.slice(2)} repo: ${vaultRepo}\n`);
+    } catch (err) {
+      console.error(`Error creating repo: ${err}`);
+      rl.close();
+      process.exit(1);
+    }
+  }
+
+  // Save config (use the HTTPS URL that gh provides auth for)
+  const remoteUrl = `https://github.com/${vaultRepo}.git`;
   await saveConfig({ vaultRepo, vaultRemoteUrl: remoteUrl });
-  console.log(`\nConfig saved to ${config.configPath}`);
+  console.log(`Config saved to ${config.configPath}`);
   console.log(`Vault will be at: ${config.vaultPath}\n`);
 
   // Initialize vault structure

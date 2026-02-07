@@ -43,7 +43,7 @@ export async function loadConfig(): Promise<ResolvedConfig> {
 
     if (saved.vaultRepo) {
       base.vaultRepo = saved.vaultRepo;
-      base.vaultRemoteUrl ??= `git@github.com:${saved.vaultRepo}.git`;
+      base.vaultRemoteUrl ??= `https://github.com/${saved.vaultRepo}.git`;
     }
     if (saved.vaultRemoteUrl) {
       base.vaultRemoteUrl ??= saved.vaultRemoteUrl;

@@ -20,7 +20,9 @@ export class VaultManager {
       await this.pull();
     } catch {
       if (this.config.remoteUrl) {
-        await exec("git", ["clone", this.config.remoteUrl, this.config.localPath]);
+        // Use gh CLI for cloning — it handles auth automatically
+        await fs.mkdir(path.dirname(this.config.localPath), { recursive: true });
+        await exec("gh", ["repo", "clone", this.config.remoteUrl, this.config.localPath]);
       } else {
         await fs.mkdir(this.config.localPath, { recursive: true });
         await this.git("init");
