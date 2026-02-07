@@ -5,7 +5,12 @@ import * as path from "node:path";
 import * as readline from "node:readline/promises";
 import { CopilotClient, defineTool } from "@github/copilot-sdk";
 import { z } from "zod";
-import { VaultManager, ParaManager, ParaCategory } from "@octopal/core";
+import {
+  VaultManager,
+  ParaManager,
+  loadConfig,
+  saveConfig,
+} from "@octopal/core";
 
 const rl = readline.createInterface({
   input: process.stdin,
@@ -63,26 +68,40 @@ tags: [relevant, tags]
 `;
 
 async function main() {
-  const vaultPath = process.argv[2] || process.env.OCTOPAL_VAULT_PATH;
+  console.log("🐙 Welcome to Octopal!\n");
 
-  if (!vaultPath) {
-    console.error(
-      "Usage: octopal-setup <vault-path>\n\n" +
-        "Creates a new PARA vault at the given path and walks you through\n" +
-        "an interactive setup to pre-populate it with your projects, areas,\n" +
-        "and tasks.\n\n" +
-        "You can also set OCTOPAL_VAULT_PATH environment variable.",
+  const config = await loadConfig();
+
+  // Step 1: Get the vault repo
+  let vaultRepo = process.argv[2] || config.vaultRepo;
+
+  if (!vaultRepo) {
+    console.log(
+      "Octopal stores your knowledge in a GitHub repo as Obsidian-compatible markdown.\n",
     );
-    process.exit(1);
+    vaultRepo = await rl.question(
+      "GitHub repo for your vault (e.g. username/vault): ",
+    );
+    vaultRepo = vaultRepo.trim();
+    if (!vaultRepo) {
+      console.error("Error: A GitHub repo is required.");
+      rl.close();
+      process.exit(1);
+    }
   }
 
-  const resolvedPath = path.resolve(vaultPath);
+  const remoteUrl = `git@github.com:${vaultRepo}.git`;
 
-  console.log("🐙 Welcome to Octopal!\n");
-  console.log(`Setting up your vault at: ${resolvedPath}\n`);
+  // Save config
+  await saveConfig({ vaultRepo, vaultRemoteUrl: remoteUrl });
+  console.log(`\nConfig saved to ${config.configPath}`);
+  console.log(`Vault will be at: ${config.vaultPath}\n`);
 
   // Initialize vault structure
-  const vault = new VaultManager({ localPath: resolvedPath });
+  const vault = new VaultManager({
+    localPath: config.vaultPath,
+    remoteUrl: remoteUrl,
+  });
   await vault.init();
   const para = new ParaManager(vault);
   await para.ensureStructure();
@@ -101,7 +120,7 @@ async function main() {
       await vault.writeFile(`Templates/${t}`, content);
     }
   } catch {
-    // vault-template not found — that's fine, skip
+    // vault-template not found — skip
   }
 
   console.log("Vault structure created. Starting interactive setup...\n");
@@ -116,7 +135,7 @@ async function main() {
 
   const session = await client.createSession({
     model: "claude-sonnet-4",
-    workingDirectory: resolvedPath,
+    workingDirectory: config.vaultPath,
     systemMessage: {
       mode: "append",
       content: `${SYSTEM_PROMPT}\n\n## Current Vault Structure\n\`\`\`\n${vaultStructure}\n\`\`\`\n\nToday's date: ${new Date().toISOString().slice(0, 10)}`,
@@ -205,12 +224,13 @@ async function main() {
   console.log("\n");
   console.log("─".repeat(60));
   console.log("\n🐙 Your vault is ready!\n");
-  console.log(`  📂 ${resolvedPath}`);
+  console.log(`  📂 ${config.vaultPath}`);
+  console.log(`  🔗 ${vaultRepo}`);
   console.log(
-    `\n  Open this folder in Obsidian to start using it.`,
+    `\n  Open ${config.vaultPath} in Obsidian to start using it.`,
   );
   console.log(
-    `  Set OCTOPAL_VAULT_PATH=${resolvedPath} to use with octopal ingest.\n`,
+    `  Run 'octopal ingest \"your notes\"' to add content via the agent.\n`,
   );
 
   await session.destroy();
