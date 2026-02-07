@@ -2,7 +2,9 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
 
-const OCTOPAL_DIR = path.join(os.homedir(), ".octopal");
+const OCTOPAL_DIR = process.env.OCTOPAL_HOME
+  ? path.resolve(process.env.OCTOPAL_HOME)
+  : path.join(os.homedir(), ".octopal");
 const CONFIG_PATH = path.join(OCTOPAL_DIR, "config.json");
 const VAULT_DIR = path.join(OCTOPAL_DIR, "vault");
 

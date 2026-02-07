@@ -27,6 +27,12 @@ npm run typecheck     # Type-check only
 
 Config lives at `~/.octopal/config.json` (created by `octopal setup`). Vault is cloned to `~/.octopal/vault/`. Environment variables `OCTOPAL_VAULT_PATH` and `OCTOPAL_VAULT_REMOTE` can override.
 
+Set `OCTOPAL_HOME` to override the base directory (used by the test agent for isolation).
+
+## Testing
+
+Use the `@test-octopal` agent (`.github/agents/test-octopal.agent.md`) to test in an isolated environment. It creates a temp dir, sets `OCTOPAL_HOME`, and exercises features without touching `~/.octopal/`.
+
 ## Architecture
 
 See ARCHITECTURE.md for detailed module documentation and extension guide.

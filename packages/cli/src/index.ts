@@ -16,6 +16,7 @@ Config:
   Vault is cloned to ~/.octopal/vault/
 
 Environment overrides:
+  OCTOPAL_HOME               Override config/data directory (default: ~/.octopal)
   OCTOPAL_VAULT_PATH         Override local vault path
   OCTOPAL_VAULT_REMOTE       Override git remote URL
 

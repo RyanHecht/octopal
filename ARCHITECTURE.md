@@ -175,9 +175,11 @@ Manages `~/.octopal/config.json` and resolves the vault location.
 - `isConfigured(config)` — Returns true if a vault repo or remote URL is set.
 
 **Resolution order:**
-1. Environment variables (`OCTOPAL_VAULT_PATH`, `OCTOPAL_VAULT_REMOTE`) — highest priority
+1. Environment variables (`OCTOPAL_HOME`, `OCTOPAL_VAULT_PATH`, `OCTOPAL_VAULT_REMOTE`) — highest priority
 2. `~/.octopal/config.json` — created by `octopal setup`
-3. Defaults — vault at `~/.octopal/vault/`
+3. Defaults — config at `~/.octopal/`, vault at `~/.octopal/vault/`
+
+`OCTOPAL_HOME` overrides the base directory for all octopal data (config, vault). This is used by the test agent to create isolated test environments.
 
 ### `vault.ts` — Vault Management
 
@@ -519,6 +521,35 @@ npm run clean
 2. Copy it: `cp github-copilot-sdk-*.tgz /path/to/octopal/vendor/`
 3. Update the version in `packages/core/package.json`
 4. Run `npm install && npm run build`
+
+### Testing with the test agent
+
+There's a custom agent at `.github/agents/test-octopal.agent.md` that can be invoked from the Copilot CLI to test octopal in an isolated environment. It:
+
+1. Builds octopal
+2. Creates a temp directory with `OCTOPAL_HOME` pointed at it
+3. Creates a local test vault (no GitHub repo needed)
+4. Exercises the CLI features
+5. Reports what passed/failed
+
+To use it, ask the Copilot CLI to `@test-octopal` or describe what you want to test. The agent handles all environment isolation — it never touches `~/.octopal/`.
+
+**Manual testing with an isolated environment:**
+```bash
+# Create isolated test env
+export OCTOPAL_TEST_DIR=$(mktemp -d /tmp/octopal-test-XXXXXX)
+export OCTOPAL_HOME="$OCTOPAL_TEST_DIR/home"
+export OCTOPAL_VAULT_PATH="$OCTOPAL_TEST_DIR/vault"
+mkdir -p "$OCTOPAL_HOME" "$OCTOPAL_VAULT_PATH"
+cd "$OCTOPAL_VAULT_PATH" && git init && git commit --allow-empty -m "init"
+echo '{"vaultRepo":"test/vault"}' > "$OCTOPAL_HOME/config.json"
+
+# Run commands
+node packages/cli/dist/index.js ingest "test note"
+
+# Clean up
+rm -rf "$OCTOPAL_TEST_DIR"
+```
 
 ---
 
