@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "bin": {
-    "octopal": "./dist/index.js"
+    "octopal": "./dist/index.js",
+    "octopal-setup": "./dist/setup.js"
   },
   "scripts": {
     "build": "tsc",
@@ -12,6 +13,8 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
-    "@octopal/core": "*"
+    "@octopal/core": "*",
+    "@github/copilot-sdk": "file:../../vendor/github-copilot-sdk-0.1.8.tgz",
+    "zod": "^4.3.6"
   }
 }

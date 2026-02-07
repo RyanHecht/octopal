@@ -243,7 +243,38 @@ The simplest module — it creates an agent and sends it a prompt asking it to p
 
 ### `cli/index.ts` — CLI Entry Point
 
-Parses command-line arguments and calls `IngestPipeline`. Reads config from environment variables (`OCTOPAL_VAULT_PATH`, `OCTOPAL_VAULT_REMOTE`).
+Parses command-line arguments and routes to the right handler. Reads config from environment variables (`OCTOPAL_VAULT_PATH`, `OCTOPAL_VAULT_REMOTE`).
+
+Commands:
+- `octopal setup [vault-path]` — Launches the interactive onboarding agent
+- `octopal ingest <text>` — Processes raw text through the ingestion pipeline
+
+### `cli/setup.ts` — Interactive Onboarding Agent
+
+A standalone script that creates a new PARA vault and walks the user through an interactive interview. It uses the Copilot SDK's `onUserInputRequest` handler to ask questions in the terminal.
+
+**How it works:**
+1. Creates the vault directory structure (PARA folders + templates)
+2. Starts a Copilot session with a system prompt that instructs the AI to conduct an interview
+3. The AI uses `ask_user` to ask questions one at a time (name, projects, areas, tasks, etc.)
+4. Each user answer comes through the `onUserInputRequest` handler, which uses Node's `readline` to prompt in the terminal
+5. After ~8-10 questions, the AI uses write_note/append_to_note tools to populate the vault
+6. Finally commits everything to git
+
+**The `onUserInputRequest` pattern:**
+```typescript
+const session = await client.createSession({
+  onUserInputRequest: async (request) => {
+    // request.question — the question the AI wants to ask
+    // request.choices — optional multiple-choice options
+    // request.allowFreeform — whether free text is accepted
+    const answer = await rl.question(request.question);
+    return { answer, wasFreeform: true };
+  },
+});
+```
+
+This is how any connector can implement interactive conversations — Discord, web UI, etc. would implement the same handler pattern with their own I/O.
 
 ---
 

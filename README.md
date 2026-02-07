@@ -22,7 +22,10 @@ npm install
 # Build
 npm run build
 
-# Set up your vault (or create a new one from the template)
+# Interactive vault setup (recommended for first-time users)
+node packages/cli/dist/index.js setup ~/my-vault
+
+# Or manually set up from template
 cp -r vault-template ~/my-vault
 cd ~/my-vault && git init && git add -A && git commit -m "Initial vault"
 
@@ -34,8 +37,11 @@ export OCTOPAL_VAULT_REMOTE=git@github.com:you/my-vault.git  # optional
 ### Usage
 
 ```bash
+# Interactive vault setup — asks you questions and pre-populates your vault
+node packages/cli/dist/index.js setup ~/my-vault
+
 # Ingest a quick note
-node packages/cli/dist/index.js ingest "Met with Alice about the website redesign. She wants new colors by Friday."
+node packages/cli/dist/index.js ingest "Met with Alice about the website redesign. New colors by Friday."
 
 # Pipe in longer content
 cat meeting-notes.txt | node packages/cli/dist/index.js ingest -

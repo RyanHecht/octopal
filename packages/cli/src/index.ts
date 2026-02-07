@@ -6,15 +6,17 @@ const HELP = `
 octopal — personal PARA knowledge agent
 
 Usage:
-  octopal ingest <text>       Ingest a note, brain dump, or transcript
-  octopal ingest -            Read from stdin
-  octopal --help              Show this help
+  octopal setup [vault-path]   Interactive vault setup (guided onboarding)
+  octopal ingest <text>        Ingest a note, brain dump, or transcript
+  octopal ingest -             Read from stdin
+  octopal --help               Show this help
 
 Environment:
-  OCTOPAL_VAULT_PATH          Path to local vault directory (required)
+  OCTOPAL_VAULT_PATH          Path to local vault directory (required for ingest)
   OCTOPAL_VAULT_REMOTE        Git remote URL for the vault (optional)
 
 Examples:
+  octopal setup ~/my-vault
   octopal ingest "Met with Alice about the website redesign. She wants new colors by Friday."
   echo "some notes" | octopal ingest -
 `;
@@ -36,7 +38,18 @@ async function main() {
 
   const command = args[0];
 
-  if (command === "ingest") {
+  if (command === "setup") {
+    // Delegate to setup script
+    const setupPath = new URL("./setup.js", import.meta.url).pathname;
+    const { execFile } = await import("node:child_process");
+    const child = execFile(
+      process.execPath,
+      [setupPath, ...args.slice(1)],
+      { stdio: "inherit", env: process.env } as any,
+    );
+    child.on("exit", (code) => process.exit(code ?? 0));
+    return;
+  } else if (command === "ingest") {
     let text: string;
 
     if (args[1] === "-") {
