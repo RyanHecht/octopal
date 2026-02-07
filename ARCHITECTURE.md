@@ -157,6 +157,28 @@ What happens:
 
 ## Module-by-Module Guide
 
+### `config.ts` — Configuration
+
+Manages `~/.octopal/config.json` and resolves the vault location.
+
+**Config file format:**
+```json
+{
+  "vaultRepo": "username/vault",
+  "vaultRemoteUrl": "git@github.com:username/vault.git"
+}
+```
+
+**Key functions:**
+- `loadConfig()` — Reads `~/.octopal/config.json`, merges with env var overrides (`OCTOPAL_VAULT_PATH`, `OCTOPAL_VAULT_REMOTE`), returns a `ResolvedConfig` with all paths filled in.
+- `saveConfig(config)` — Merges new values into the existing config file.
+- `isConfigured(config)` — Returns true if a vault repo or remote URL is set.
+
+**Resolution order:**
+1. Environment variables (`OCTOPAL_VAULT_PATH`, `OCTOPAL_VAULT_REMOTE`) — highest priority
+2. `~/.octopal/config.json` — created by `octopal setup`
+3. Defaults — vault at `~/.octopal/vault/`
+
 ### `vault.ts` — Vault Management
 
 The `VaultManager` class handles all interactions with the PARA vault on disk. It wraps git and filesystem operations.
@@ -243,10 +265,10 @@ The simplest module — it creates an agent and sends it a prompt asking it to p
 
 ### `cli/index.ts` — CLI Entry Point
 
-Parses command-line arguments and routes to the right handler. Reads config from environment variables (`OCTOPAL_VAULT_PATH`, `OCTOPAL_VAULT_REMOTE`).
+Parses command-line arguments and routes to the right handler. Reads config from `~/.octopal/config.json` (created by `octopal setup`).
 
 Commands:
-- `octopal setup [vault-path]` — Launches the interactive onboarding agent
+- `octopal setup` — Launches the interactive onboarding agent
 - `octopal ingest <text>` — Processes raw text through the ingestion pipeline
 
 ### `cli/setup.ts` — Interactive Onboarding Agent
@@ -420,10 +442,14 @@ mkdir -p packages/myconnector/src
 
 6. **Write your code** in `packages/myconnector/src/index.ts`:
 ```typescript
-import { OctopalAgent } from "@octopal/core";
+import { OctopalAgent, loadConfig } from "@octopal/core";
 
+const config = await loadConfig();
 const agent = new OctopalAgent({
-  vault: { localPath: process.env.OCTOPAL_VAULT_PATH! },
+  vault: {
+    localPath: config.vaultPath,
+    remoteUrl: config.vaultRemoteUrl,
+  },
 });
 
 await agent.init();
@@ -467,8 +493,9 @@ npm install --save-dev some-dev-tool
 # Build first
 npm run build
 
-# Run
-OCTOPAL_VAULT_PATH=~/my-vault node packages/cli/dist/index.js ingest "test note"
+# Run (config must exist — run setup first, or create ~/.octopal/config.json manually)
+node packages/cli/dist/index.js setup
+node packages/cli/dist/index.js ingest "test note"
 ```
 
 ### Checking types without building
@@ -503,8 +530,8 @@ Make sure `@types/node` is installed: `npm install --save-dev @types/node`
 ### Build errors about Zod types
 The SDK uses Zod v4. Make sure `packages/core/package.json` depends on `"zod": "^4.x"`.
 
-### "OCTOPAL_VAULT_PATH environment variable is required"
-Set the environment variable: `export OCTOPAL_VAULT_PATH=/path/to/your/vault`
+### "Octopal is not configured yet"
+Run `octopal setup` to create `~/.octopal/config.json` and clone your vault. You can also set `OCTOPAL_VAULT_PATH` and `OCTOPAL_VAULT_REMOTE` environment variables as overrides.
 
 ### Copilot auth issues
 Make sure you're logged in: `gh auth login` or set `GITHUB_TOKEN` environment variable.

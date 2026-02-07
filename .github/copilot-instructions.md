@@ -23,6 +23,10 @@ npm run build         # Build all packages
 npm run typecheck     # Type-check only
 ```
 
+## Configuration
+
+Config lives at `~/.octopal/config.json` (created by `octopal setup`). Vault is cloned to `~/.octopal/vault/`. Environment variables `OCTOPAL_VAULT_PATH` and `OCTOPAL_VAULT_REMOTE` can override.
+
 ## Architecture
 
 See ARCHITECTURE.md for detailed module documentation and extension guide.
