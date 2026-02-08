@@ -20,7 +20,16 @@ When the user gives you notes, brain dumps, transcripts, or other raw input:
 2. Decide where it belongs in the PARA structure
 3. Create or update notes in the appropriate location
 4. Extract any actionable items and create tasks using Obsidian Tasks format
-5. Commit changes to the vault
+5. Use the knowledge context provided to enrich your notes — use full names, add [[wikilinks]] to knowledge entries, and reference known details
+6. If you discover new people, organizations, jargon, or reusable facts, save them as knowledge entries using save_knowledge
+7. For uncertain knowledge links, use ⚠️ before the wikilink (e.g., ⚠️[[Knowledge/People/Dr. Chen|my shrink]]) and add a triage item using add_triage_item
+8. Write a journal entry to Resources/Knowledge/Journal/ documenting your decisions
+9. Commit changes to the vault
+
+## Knowledge Links
+- Confirmed links: \`[[Knowledge/People/Sarah|Sarah]]\`
+- Uncertain links: \`⚠️[[Knowledge/People/Dr. Chen|my shrink]]\`
+- The ⚠️ prefix means "pending user review" — make the link anyway so it's useful immediately
 
 ## Obsidian Tasks Format
 Create tasks using this emoji format:
@@ -38,7 +47,7 @@ Create tasks using this emoji format:
 `;
 
 export class OctopalAgent {
-  private client: CopilotClient;
+  readonly client: CopilotClient;
   readonly vault: VaultManager;
   private para: ParaManager;
   private tasks: TaskManager;

@@ -181,6 +181,31 @@ async function main() {
     // vault-template not found — skip
   }
 
+  // Create knowledge base structure
+  const knowledgeSrcDir = path.join(vaultTemplateDir, "Resources", "Knowledge");
+  try {
+    for (const subdir of ["People", "Terms", "Organizations", "Journal"]) {
+      if (!(await vault.exists(`Resources/Knowledge/${subdir}`))) {
+        await vault.writeFile(`Resources/Knowledge/${subdir}/.gitkeep`, "");
+      }
+    }
+    // Copy README and PHILOSOPHY
+    for (const file of ["README.md", "PHILOSOPHY.md"]) {
+      if (!(await vault.exists(`Resources/Knowledge/${file}`))) {
+        const content = await fs.readFile(path.join(knowledgeSrcDir, file), "utf-8");
+        await vault.writeFile(`Resources/Knowledge/${file}`, content);
+      }
+    }
+    // Copy Triage.md
+    if (!(await vault.exists("Inbox/Triage.md"))) {
+      const triageSrc = path.join(vaultTemplateDir, "Inbox", "Triage.md");
+      const content = await fs.readFile(triageSrc, "utf-8");
+      await vault.writeFile("Inbox/Triage.md", content);
+    }
+  } catch {
+    // vault-template not found — skip
+  }
+
   console.log("Vault structure created. Starting interactive setup...\n");
   console.log("─".repeat(60));
   console.log();

@@ -262,9 +262,25 @@ This is the brain of octopal. It creates a Copilot SDK session with custom tools
 
 **The tools** are defined in `tools.ts` using `defineTool()` from the Copilot SDK + [Zod](https://zod.dev/) for parameter schemas. Each tool is a function the AI can call. The `buildVaultTools()` function returns tools as a named object (for cherry-picking), and `buildAllVaultTools()` returns the full array. See [How to Add a New Agent Tool](#how-to-add-a-new-agent-tool) below.
 
+### `knowledge.ts` — Knowledge Index
+
+Scans `Resources/Knowledge/` to build an in-memory index of all knowledge entries (titles, aliases, backlink context). Provides deterministic string matching (Phase 1 of the preprocessor) and formatting helpers for the LLM.
+
+**Key exports:**
+- `buildKnowledgeIndex(vault)` — Scans knowledge entries, parses frontmatter, collects backlinks from all vault notes
+- `deterministicMatch(index, input)` — Case-insensitive substring matching of titles/aliases against raw input
+- `formatIndexForLLM(index)` — Formats the index for the Haiku preprocessor prompt
+
+### `preprocessor.ts` — Two-Phase Preprocessor
+
+Runs before the main agent during ingest. Phase 1 (deterministic) matches known entities by title/alias. Phase 2 (Haiku) identifies semantic matches and new entities.
+
+**Key exports:**
+- `runPreprocessor(client, vault, rawInput)` — Returns matched knowledge entries, high-confidence new aliases, low-confidence triage items, and new entity candidates
+
 ### `ingest.ts` — Ingestion Pipeline
 
-The simplest module — it creates an agent and sends it a prompt asking it to process raw text. The agent uses its tools to read the vault, create notes, create tasks, and commit.
+Orchestrates the full ingest flow: runs the preprocessor, auto-applies high-confidence aliases, builds an enriched prompt with matched knowledge context, runs the main agent, and auto-commits if needed.
 
 ### `cli/index.ts` — CLI Entry Point
 
@@ -324,6 +340,42 @@ A markdown file inside the vault that lets users customize how the agent organiz
 - **Custom Instructions** — free-form user preferences
 
 Users can edit this file in Obsidian like any other note. Changes take effect on the next ingest.
+
+### Knowledge Base — `Resources/Knowledge/`
+
+A wiki of atomic facts (people, terms, organizations) that the agent reads and updates across sessions. See `Resources/Knowledge/PHILOSOPHY.md` in the vault for the full design rationale.
+
+**Location:** `<vault>/Resources/Knowledge/{People,Terms,Organizations}/`
+
+**Entry format:**
+```markdown
+---
+title: Dr. Chen
+aliases: [psychiatrist, Dr. C, my psychiatrist]
+category: people
+created: 2026-02-08
+---
+
+Psychiatrist at Wellness Partners.
+- Phone: 555-0123
+```
+
+The `aliases` field enables deterministic matching — any alias in the list is recognized automatically on future ingests.
+
+**How it works during ingest:**
+
+1. **Phase 1 (deterministic):** `knowledge.ts` scans all knowledge entries, builds an index of titles + aliases, and does case-insensitive string matching against the input. Fast, free, no LLM.
+2. **Phase 2 (semantic):** `preprocessor.ts` sends unmatched text + the index (including backlink context) to Haiku for semantic matching. Returns high-confidence aliases (auto-applied), low-confidence items (triaged), and new entity candidates.
+3. **Main agent:** Receives matched knowledge as context, creates wikilinks to entries, saves new knowledge via `save_knowledge`, and flags uncertain links with ⚠️.
+
+**Tools:**
+- `lookup_knowledge` — search knowledge entries (fallback for preprocessor)
+- `save_knowledge` — create/update an entry with category, name, content, aliases
+- `add_triage_item` — queue uncertain associations for user review in `Inbox/Triage.md`
+
+**Journal:** Each ingest produces a journal entry in `Resources/Knowledge/Journal/` documenting what the agent did and why — providing an audit trail for decision-making.
+
+**Triage:** Low-confidence associations are linked immediately with a ⚠️ prefix and queued in `Inbox/Triage.md` for batch review. The `octopal triage` command (planned) will process user approvals/rejections.
 
 ---
 

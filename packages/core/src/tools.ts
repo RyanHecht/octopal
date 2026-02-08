@@ -149,6 +149,121 @@ export function buildVaultTools({ vault, para, tasks }: ToolDeps) {
         return `Committed and pushed: ${message}`;
       },
     }),
+
+    lookupKnowledge: defineTool("lookup_knowledge", {
+      description:
+        "Search the knowledge base (Resources/Knowledge/) for people, terms, or organizations. Use as a fallback if the provided knowledge context is missing something.",
+      parameters: z.object({
+        query: z.string().describe("Search query (case-insensitive)"),
+      }),
+      handler: async ({ query }) => {
+        const results = await vault.search(query);
+        const kbResults = results.filter((r) =>
+          r.path.startsWith("Resources/Knowledge/"),
+        );
+        if (kbResults.length === 0) return "No knowledge entries found.";
+        return kbResults
+          .slice(0, 15)
+          .map((r) => `${r.path}: ${r.line}`)
+          .join("\n");
+      },
+    }),
+
+    saveKnowledge: defineTool("save_knowledge", {
+      description:
+        "Create or update a knowledge entry in Resources/Knowledge/. Use when you discover a new person, organization, term, or other reusable fact.",
+      parameters: z.object({
+        category: z
+          .enum(["People", "Terms", "Organizations"])
+          .describe("Knowledge category"),
+        name: z.string().describe("Entity name, e.g. 'Dr. Chen'"),
+        content: z
+          .string()
+          .describe("Markdown body (details, contact info, notes — no frontmatter)"),
+        aliases: z
+          .array(z.string())
+          .optional()
+          .describe("Alternative names/terms for this entity"),
+      }),
+      handler: async ({ category, name, content, aliases }) => {
+        const slug = name
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-|-$/g, "");
+        const filePath = `Resources/Knowledge/${category}/${slug}.md`;
+        const today = new Date().toISOString().slice(0, 10);
+        const aliasLine =
+          aliases && aliases.length > 0
+            ? `\naliases: [${aliases.join(", ")}]`
+            : "";
+        const frontmatter = `---\ntitle: "${name}"${aliasLine}\ncategory: ${category.toLowerCase()}\ncreated: ${today}\n---\n\n`;
+        await vault.writeFile(filePath, frontmatter + content);
+        return `Saved knowledge entry: ${filePath}`;
+      },
+    }),
+
+    addTriageItem: defineTool("add_triage_item", {
+      description:
+        "Add an uncertain association or new entity suggestion to the triage queue (Inbox/Triage.md) for the user to review. Use when you're not confident about a knowledge link.",
+      parameters: z.object({
+        description: z
+          .string()
+          .describe(
+            'What needs review, e.g. \'"my shrink" → alias for Dr. Chen?\'',
+          ),
+        context: z
+          .string()
+          .describe("The surrounding text that prompted this suggestion"),
+        suggestedMatch: z
+          .string()
+          .optional()
+          .describe("Path to the suggested knowledge entry, if applicable"),
+        confidence: z
+          .string()
+          .optional()
+          .describe("Confidence level, e.g. '70%'"),
+      }),
+      handler: async ({
+        description: desc,
+        context,
+        suggestedMatch,
+        confidence,
+      }) => {
+        const triagePath = "Inbox/Triage.md";
+
+        // Read existing triage file or create with header
+        let existing = "";
+        try {
+          existing = await vault.readFile(triagePath);
+        } catch {
+          existing = `# Triage Queue\n\nReview pending associations. Mark with ✅ to approve, ❌ to reject,\nor edit the suggestion. Run \`octopal triage\` to process your decisions.\n\n## Pending\n\n## Processed\n`;
+        }
+
+        // Deduplicate — skip if same description already pending
+        if (existing.includes(desc)) {
+          return `Triage item already exists: ${desc}`;
+        }
+
+        // Build the new item
+        let item = `- [ ] ${desc}`;
+        item += `\n  _Context: "${context}"_`;
+        if (confidence) item += `\n  _Confidence: ${confidence}_`;
+        if (suggestedMatch) item += `\n  _Suggested: ${suggestedMatch}_`;
+        item += "\n";
+
+        // Insert before "## Processed" section
+        const processedIdx = existing.indexOf("## Processed");
+        if (processedIdx !== -1) {
+          const before = existing.slice(0, processedIdx);
+          const after = existing.slice(processedIdx);
+          await vault.writeFile(triagePath, before + item + "\n" + after);
+        } else {
+          await vault.appendToFile(triagePath, item);
+        }
+
+        return `Added triage item: ${desc}`;
+      },
+    }),
   };
 }
 
