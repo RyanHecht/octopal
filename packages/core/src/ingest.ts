@@ -1,4 +1,5 @@
 import { OctopalAgent } from "./agent.js";
+import type { SessionEventHandler } from "@github/copilot-sdk";
 import type { OctopalConfig, IngestResult } from "./types.js";
 
 export class IngestPipeline {
@@ -9,7 +10,7 @@ export class IngestPipeline {
   }
 
   /** Ingest raw text — the agent decides where to file it and what tasks to create */
-  async ingest(rawText: string): Promise<IngestResult> {
+  async ingest(rawText: string, options?: { onEvent?: SessionEventHandler }): Promise<IngestResult> {
     await this.agent.init();
 
     try {
@@ -26,7 +27,12 @@ Here's the content to process:
 ${rawText}
 ---`;
 
-      const response = await this.agent.run(prompt);
+      const response = await this.agent.run(prompt, options);
+
+      // Auto-commit fallback: if the agent didn't commit, do it now
+      if (await this.agent.vault.hasUncommittedChanges()) {
+        await this.agent.vault.commitAndPush("octopal: auto-commit ingested changes");
+      }
 
       return {
         notes: [],

@@ -5,11 +5,12 @@ import * as path from "node:path";
 import * as readline from "node:readline/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { CopilotClient, defineTool } from "@github/copilot-sdk";
-import { z } from "zod";
+import { CopilotClient } from "@github/copilot-sdk";
 import {
   VaultManager,
   ParaManager,
+  TaskManager,
+  buildVaultTools,
   loadConfig,
   saveConfig,
 } from "@octopal/core";
@@ -153,17 +154,28 @@ async function main() {
   await para.ensureStructure();
 
   // Copy templates if vault-template exists alongside this package
-  const templateDir = path.resolve(
+  const vaultTemplateDir = path.resolve(
     import.meta.dirname,
     "../../..",
     "vault-template",
-    "Templates",
   );
+  const templateDir = path.join(vaultTemplateDir, "Templates");
   try {
     const templates = await fs.readdir(templateDir);
     for (const t of templates) {
       const content = await fs.readFile(path.join(templateDir, t), "utf-8");
       await vault.writeFile(`Templates/${t}`, content);
+    }
+  } catch {
+    // vault-template not found — skip
+  }
+
+  // Copy default conventions file
+  const conventionsSrc = path.join(vaultTemplateDir, ".octopal", "conventions.md");
+  try {
+    if (!(await vault.exists(".octopal/conventions.md"))) {
+      const content = await fs.readFile(conventionsSrc, "utf-8");
+      await vault.writeFile(".octopal/conventions.md", content);
     }
   } catch {
     // vault-template not found — skip
@@ -178,6 +190,9 @@ async function main() {
   await client.start();
 
   const vaultStructure = await para.getStructure();
+
+  const tasks = new TaskManager();
+  const vaultTools = buildVaultTools({ vault, para, tasks });
 
   const session = await client.createSession({
     model: "claude-sonnet-4",
@@ -210,47 +225,10 @@ async function main() {
       }
     },
     tools: [
-      defineTool("read_vault_structure", {
-        description: "List the current vault structure",
-        parameters: z.object({}),
-        handler: async () => para.getStructure(),
-      }),
-
-      defineTool("write_note", {
-        description:
-          "Create or overwrite a markdown note in the vault",
-        parameters: z.object({
-          path: z.string().describe("Relative path, e.g. 'Projects/my-project/index.md'"),
-          content: z.string().describe("Full markdown content including frontmatter"),
-        }),
-        handler: async ({ path: notePath, content }) => {
-          await vault.writeFile(notePath, content);
-          return `Created: ${notePath}`;
-        },
-      }),
-
-      defineTool("append_to_note", {
-        description: "Append content to an existing note",
-        parameters: z.object({
-          path: z.string().describe("Relative path to the note"),
-          content: z.string().describe("Content to append"),
-        }),
-        handler: async ({ path: notePath, content }) => {
-          await vault.appendToFile(notePath, content);
-          return `Appended to: ${notePath}`;
-        },
-      }),
-
-      defineTool("commit_changes", {
-        description: "Commit all changes to git",
-        parameters: z.object({
-          message: z.string().describe("Git commit message"),
-        }),
-        handler: async ({ message }) => {
-          await vault.commitAndPush(message);
-          return `Committed: ${message}`;
-        },
-      }),
+      vaultTools.readVaultStructure,
+      vaultTools.writeNote,
+      vaultTools.appendToNote,
+      vaultTools.commitChanges,
     ],
   });
 

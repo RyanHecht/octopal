@@ -38,6 +38,16 @@ export class VaultManager {
     }
   }
 
+  /** Check if the vault has uncommitted changes */
+  async hasUncommittedChanges(): Promise<boolean> {
+    try {
+      const { stdout } = await this.git("status", "--porcelain");
+      return !!stdout.trim();
+    } catch {
+      return false;
+    }
+  }
+
   async commitAndPush(message: string): Promise<void> {
     await this.git("add", "-A");
     const { stdout } = await this.git("status", "--porcelain");

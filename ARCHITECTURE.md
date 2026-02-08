@@ -255,11 +255,12 @@ This is the brain of octopal. It creates a Copilot SDK session with custom tools
 2. `createSession()` creates a new AI session with:
    - A system prompt explaining the PARA method and conventions
    - The current vault structure as context
+   - User-defined conventions from `.octopal/conventions.md` (if present)
    - Custom tools the AI can call (read_vault_structure, write_note, create_task, etc.)
 3. `sendAndWait(session, prompt)` sends a message and waits for the AI to finish
 4. `run(prompt)` is a convenience that creates a session, sends one prompt, and cleans up
 
-**The tools** are defined using `defineTool()` from the Copilot SDK + [Zod](https://zod.dev/) for parameter schemas. Each tool is a function the AI can call. See [How to Add a New Agent Tool](#how-to-add-a-new-agent-tool) below.
+**The tools** are defined in `tools.ts` using `defineTool()` from the Copilot SDK + [Zod](https://zod.dev/) for parameter schemas. Each tool is a function the AI can call. The `buildVaultTools()` function returns tools as a named object (for cherry-picking), and `buildAllVaultTools()` returns the full array. See [How to Add a New Agent Tool](#how-to-add-a-new-agent-tool) below.
 
 ### `ingest.ts` — Ingestion Pipeline
 
@@ -302,6 +303,27 @@ const session = await client.createSession({
 ```
 
 This is how any connector can implement interactive conversations — Discord, web UI, etc. would implement the same handler pattern with their own I/O.
+
+### `.octopal/conventions.md` — User-Defined Conventions
+
+A markdown file inside the vault that lets users customize how the agent organizes content. The agent reads it on every session and appends it to the system prompt.
+
+**Location:** `<vault>/.octopal/conventions.md`
+
+**How it works:**
+- `OctopalAgent.createSession()` attempts to read the file from the vault
+- If it exists, the content is appended to the system prompt under a `## User Conventions` heading
+- If it doesn't exist, the agent falls back to its built-in defaults
+- The setup flow copies a default version from `vault-template/.octopal/conventions.md`
+
+**Default sections:**
+- **File Structure** — directory layout conventions (subdirectories with `index.md`, kebab-case names)
+- **Default Areas** — seed list of common areas (Work, Health, Finances, etc.)
+- **Note Formatting** — frontmatter fields, wikilink preferences
+- **Task Defaults** — created date, default priority, due date inference
+- **Custom Instructions** — free-form user preferences
+
+Users can edit this file in Obsidian like any other note. Changes take effect on the next ingest.
 
 ---
 

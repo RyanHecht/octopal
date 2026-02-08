@@ -65,7 +65,7 @@ async function main() {
       }
       text = Buffer.concat(chunks).toString("utf-8").trim();
     } else {
-      text = args.slice(1).join(" ");
+      text = args.slice(1).join(" ").trim();
     }
 
     if (!text) {
@@ -81,8 +81,14 @@ async function main() {
     });
 
     console.log("🐙 Processing your input...\n");
-    const result = await pipeline.ingest(text);
-    console.log(result.summary);
+    const result = await pipeline.ingest(text, {
+      onEvent: (event) => {
+        if (event.type === "assistant.message_delta") {
+          process.stdout.write(event.data.deltaContent ?? "");
+        }
+      },
+    });
+    console.log();
   } else {
     console.error(`Unknown command: ${command}`);
     console.log(HELP.trim());
