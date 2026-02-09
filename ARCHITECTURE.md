@@ -107,23 +107,37 @@ octopal/
 ├── package.json              # Root — defines workspaces, shared dev deps
 ├── tsconfig.json             # Root — references all sub-projects for `tsc --build`
 ├── tsconfig.base.json        # Shared TypeScript compiler settings
+├── .github/
+│   ├── agents/
+│   │   ├── octopal.agent.md      # Agent definition for Copilot CLI
+│   │   └── test-octopal.agent.md # Test agent
+│   └── skills/
+│       └── octopal/
+│           └── SKILL.md          # PARA instructions for any AI client
 ├── packages/
 │   ├── core/                 # @octopal/core — the shared library
 │   │   ├── package.json      # Declares dependencies (copilot-sdk, zod)
 │   │   ├── tsconfig.json     # Extends base, outputs to dist/
 │   │   └── src/              # Source code (TypeScript)
 │   │       ├── index.ts      # Re-exports everything
-│   │       ├── agent.ts      # Copilot SDK session + tool definitions
+│   │       ├── agent.ts      # Copilot SDK session + tool wiring
+│   │       ├── tools.ts      # Harness-agnostic tool definitions
+│   │       ├── prompts.ts    # Shared prompt strings (single source of truth)
 │   │       ├── vault.ts      # Git + file operations on the vault
 │   │       ├── para.ts       # PARA directory structure management
 │   │       ├── tasks.ts      # Obsidian Tasks format parser/formatter
 │   │       ├── ingest.ts     # Ingestion pipeline (orchestrates agent)
 │   │       └── types.ts      # Shared TypeScript types
-│   └── cli/                  # @octopal/cli — command-line entry point
-│       ├── package.json      # Depends on @octopal/core
+│   ├── cli/                  # @octopal/cli — command-line entry point
+│   │   ├── package.json      # Depends on @octopal/core
+│   │   ├── tsconfig.json     # References core for build order
+│   │   └── src/
+│   │       └── index.ts      # CLI argument parsing, calls IngestPipeline
+│   └── mcp-server/           # @octopal/mcp-server — MCP tool server
+│       ├── package.json      # Depends on @octopal/core + @modelcontextprotocol/sdk
 │       ├── tsconfig.json     # References core for build order
 │       └── src/
-│           └── index.ts      # CLI argument parsing, calls IngestPipeline
+│           └── index.ts      # MCP stdio server, registers all vault tools
 └── vault-template/           # Starter PARA vault (copy this for new vaults)
 ```
 
@@ -260,7 +274,24 @@ This is the brain of octopal. It creates a Copilot SDK session with custom tools
 3. `sendAndWait(session, prompt)` sends a message and waits for the AI to finish
 4. `run(prompt)` is a convenience that creates a session, sends one prompt, and cleans up
 
-**The tools** are defined in `tools.ts` using `defineTool()` from the Copilot SDK + [Zod](https://zod.dev/) for parameter schemas. Each tool is a function the AI can call. The `buildVaultTools()` function returns tools as a named object (for cherry-picking), and `buildAllVaultTools()` returns the full array. See [How to Add a New Agent Tool](#how-to-add-a-new-agent-tool) below.
+**The tools** are defined in `tools.ts` as harness-agnostic `OctopalToolDef` objects (name, description, Zod schema, handler). These are consumed by:
+- `buildCopilotTools()` / `buildAllVaultTools()` — wraps them with `defineTool()` for the Copilot SDK
+- `@octopal/mcp-server` — registers them as MCP tools using the Zod shape directly
+
+### `prompts.ts` — Shared Prompts
+
+Single source of truth for all prompt strings. Exports:
+- `SYSTEM_PROMPT` — main PARA agent instructions (used by `agent.ts` and the MCP server)
+- `INGEST_INSTRUCTIONS` — step-by-step ingestion workflow (used by `ingest.ts`)
+- `SETUP_PROMPT` — onboarding interview instructions (used by `cli/setup.ts`)
+
+### `tools.ts` — Tool Definitions
+
+Harness-agnostic tool definitions. Key exports:
+- `OctopalToolDef` — interface for a tool (name, description, Zod parameters, async handler)
+- `buildVaultTools(deps)` — returns all tools as raw `OctopalToolDef` objects
+- `buildCopilotTools(deps)` — wraps tools for the Copilot SDK (uses `defineTool()`)
+- `buildAllVaultTools(deps)` — returns Copilot SDK tools as an array
 
 ### `knowledge.ts` — Knowledge Index
 
@@ -319,6 +350,28 @@ const session = await client.createSession({
 ```
 
 This is how any connector can implement interactive conversations — Discord, web UI, etc. would implement the same handler pattern with their own I/O.
+
+### `mcp-server/index.ts` — MCP Tool Server
+
+An MCP (Model Context Protocol) server that exposes all octopal vault tools over stdio. This allows any MCP-aware AI client (GitHub Copilot CLI, Claude Code, VS Code Copilot Chat, etc.) to use octopal's tools directly.
+
+**How it works:**
+1. Creates an `McpServer` instance with tool and prompt capabilities
+2. Registers all tools from `buildVaultTools()` — the Zod schemas are passed directly as the MCP SDK understands Zod shapes
+3. Registers the system prompt as an MCP prompt resource (`octopal-system`)
+4. Vault initialization is lazy — deferred until the first tool call
+5. Connects via `StdioServerTransport` (the standard for local MCP servers)
+
+**Registration:**
+```bash
+# Copilot CLI
+copilot /mcp add octopal -- node ~/Documents/octopal/packages/mcp-server/dist/index.js
+
+# Claude Code
+claude mcp add octopal -- node ~/Documents/octopal/packages/mcp-server/dist/index.js
+```
+
+**Dual-mode architecture:** The standalone CLI (`@octopal/cli`) uses the Copilot SDK as its agent harness and includes features like the preprocessor pipeline. The MCP server exposes the same core tools but lets the host AI client be the agent — the host handles reasoning, tool selection, and conversation.
 
 ### `.octopal/conventions.md` — User-Defined Conventions
 
@@ -422,35 +475,32 @@ The SDK authenticates with GitHub Copilot. It tries these in order:
 
 ## How to Add a New Agent Tool
 
-Tools are defined in `packages/core/src/agent.ts` in the `buildTools()` method.
+Tools are defined in `packages/core/src/tools.ts` in `buildVaultTools()`. They use the harness-agnostic `OctopalToolDef` format, which is automatically available in both the Copilot SDK CLI and the MCP server.
 
 ### Step-by-step
 
-1. **Define the tool** using `defineTool()`:
+1. **Define the tool** as an `OctopalToolDef` in the `buildVaultTools()` return object:
 
 ```typescript
-defineTool("my_new_tool", {
-  // What the AI sees — be descriptive so it knows when to use this tool
+myNewTool: {
+  name: "my_new_tool",
   description: "Does something useful with the vault",
-  
-  // Parameter schema using Zod — defines what arguments the AI must provide
   parameters: z.object({
     someParam: z.string().describe("What this parameter is for"),
     optionalParam: z.number().optional().describe("An optional number"),
   }),
-  
-  // The function that runs when the AI calls this tool
-  handler: async ({ someParam, optionalParam }) => {
-    // Do your work here — read files, call APIs, etc.
-    const result = await this.vault.readFile(someParam);
-    return result;  // Return a string — this is what the AI sees as the tool's output
+  handler: async ({ someParam, optionalParam }: any) => {
+    const result = await vault.readFile(someParam);
+    return result;  // Return a string — this is what the AI sees
   },
-}),
+},
 ```
 
-2. **Add it to the tools array** in `buildTools()` (it's already returned as an array).
+2. **Rebuild**: `npm run build`
 
-3. **Rebuild**: `npm run build`
+The tool is now automatically available in:
+- The standalone CLI (`octopal ingest`) via the Copilot SDK
+- The MCP server (`octopal-mcp-server`) for any MCP client
 
 ### Tips for good tools
 

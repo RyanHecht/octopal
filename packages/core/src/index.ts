@@ -2,7 +2,9 @@ export { OctopalAgent } from "./agent.js";
 export { VaultManager } from "./vault.js";
 export { ParaManager, ParaCategory } from "./para.js";
 export { TaskManager, type Task, TaskStatus, TaskPriority } from "./tasks.js";
-export { buildVaultTools, buildAllVaultTools } from "./tools.js";
+export { SYSTEM_PROMPT, INGEST_INSTRUCTIONS, SETUP_PROMPT } from "./prompts.js";
+export { buildVaultTools, buildCopilotTools, buildAllVaultTools } from "./tools.js";
+export type { OctopalToolDef, ToolDeps } from "./tools.js";
 export {
   buildKnowledgeIndex,
   deterministicMatch,

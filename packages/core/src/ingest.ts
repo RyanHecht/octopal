@@ -1,6 +1,7 @@
 import { OctopalAgent } from "./agent.js";
 import { runPreprocessor } from "./preprocessor.js";
 import type { PreprocessorResult } from "./preprocessor.js";
+import { INGEST_INSTRUCTIONS } from "./prompts.js";
 import type { SessionEventHandler } from "@github/copilot-sdk";
 import type { OctopalConfig, IngestResult } from "./types.js";
 
@@ -49,15 +50,7 @@ export class IngestPipeline {
   private buildPrompt(rawText: string, preprocessed: PreprocessorResult): string {
     const sections: string[] = [];
 
-    sections.push(`I have some raw notes/thoughts to process. Please:
-1. Read the current vault structure to understand what projects/areas already exist
-2. Analyze the following content and decide where it belongs in the PARA system
-3. Create or update the appropriate notes, using wikilinks to knowledge entries where relevant
-4. Extract any actionable items and create tasks
-5. Save any newly discovered people, organizations, or terms as knowledge entries using save_knowledge
-6. For uncertain associations, use ⚠️ before the wikilink and add a triage item using add_triage_item
-7. Write a journal entry to Resources/Knowledge/Journal/ documenting what you did and why
-8. Commit the changes with a descriptive message`);
+    sections.push(INGEST_INSTRUCTIONS);
 
     // Add matched knowledge context
     if (preprocessed.matched.length > 0) {
