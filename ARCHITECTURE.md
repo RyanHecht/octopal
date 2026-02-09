@@ -104,41 +104,68 @@ This is an **npm workspaces monorepo** — a single git repo containing multiple
 
 ```
 octopal/
-├── package.json              # Root — defines workspaces, shared dev deps
-├── tsconfig.json             # Root — references all sub-projects for `tsc --build`
-├── tsconfig.base.json        # Shared TypeScript compiler settings
+├── .claude-plugin/
+│   └── plugin.json               # Plugin manifest (Claude Code + Copilot CLI)
+├── .mcp.json                     # MCP server config (auto-started by plugin)
 ├── .github/
 │   ├── agents/
-│   │   ├── octopal.agent.md      # Agent definition for Copilot CLI
+│   │   ├── octopal.agent.md      # Agent definition (repo-level, for dev)
 │   │   └── test-octopal.agent.md # Test agent
-│   └── skills/
-│       └── octopal/
-│           └── SKILL.md          # PARA instructions for any AI client
+│   └── plugin/
+│       └── marketplace.json      # Copilot CLI marketplace registry
+├── agents/
+│   └── octopal.agent.md          # Agent definition (plugin-level)
+├── skills/
+│   └── octopal/
+│       └── SKILL.md              # PARA instructions for any AI client
+├── commands/
+│   └── ingest.md                 # /octopal:ingest slash command
+├── package.json                  # Root — defines workspaces, shared dev deps
+├── tsconfig.json                 # Root — references all sub-projects
+├── tsconfig.base.json            # Shared TypeScript compiler settings
 ├── packages/
-│   ├── core/                 # @octopal/core — the shared library
-│   │   ├── package.json      # Declares dependencies (copilot-sdk, zod)
-│   │   ├── tsconfig.json     # Extends base, outputs to dist/
-│   │   └── src/              # Source code (TypeScript)
-│   │       ├── index.ts      # Re-exports everything
-│   │       ├── agent.ts      # Copilot SDK session + tool wiring
-│   │       ├── tools.ts      # Harness-agnostic tool definitions
-│   │       ├── prompts.ts    # Shared prompt strings (single source of truth)
-│   │       ├── vault.ts      # Git + file operations on the vault
-│   │       ├── para.ts       # PARA directory structure management
-│   │       ├── tasks.ts      # Obsidian Tasks format parser/formatter
-│   │       ├── ingest.ts     # Ingestion pipeline (orchestrates agent)
-│   │       └── types.ts      # Shared TypeScript types
-│   ├── cli/                  # @octopal/cli — command-line entry point
-│   │   ├── package.json      # Depends on @octopal/core
-│   │   ├── tsconfig.json     # References core for build order
+│   ├── core/                     # @octopal/core — the shared library
+│   │   ├── package.json
+│   │   ├── tsconfig.json
 │   │   └── src/
-│   │       └── index.ts      # CLI argument parsing, calls IngestPipeline
-│   └── mcp-server/           # @octopal/mcp-server — MCP tool server
-│       ├── package.json      # Depends on @octopal/core + @modelcontextprotocol/sdk
-│       ├── tsconfig.json     # References core for build order
+│   │       ├── index.ts          # Re-exports everything
+│   │       ├── agent.ts          # Copilot SDK session + tool wiring
+│   │       ├── tools.ts          # Harness-agnostic tool definitions
+│   │       ├── prompts.ts        # Shared prompt strings (single source of truth)
+│   │       ├── vault.ts          # Git + file operations on the vault
+│   │       ├── para.ts           # PARA directory structure management
+│   │       ├── tasks.ts          # Obsidian Tasks format parser/formatter
+│   │       ├── ingest.ts         # Ingestion pipeline (orchestrates agent)
+│   │       └── types.ts          # Shared TypeScript types
+│   ├── cli/                      # @octopal/cli — command-line entry point
+│   │   ├── package.json
+│   │   ├── tsconfig.json
+│   │   └── src/
+│   │       └── index.ts          # CLI argument parsing, calls IngestPipeline
+│   └── mcp-server/               # @octopal/mcp-server — MCP tool server
+│       ├── package.json
+│       ├── tsconfig.json
 │       └── src/
-│           └── index.ts      # MCP stdio server, registers all vault tools
-└── vault-template/           # Starter PARA vault (copy this for new vaults)
+│           └── index.ts          # MCP stdio server, registers all vault tools
+└── vault-template/               # Starter PARA vault (copy this for new vaults)
+```
+
+### Plugin structure
+
+The repo root is itself a Claude Code / Copilot CLI plugin. When installed:
+- `.claude-plugin/plugin.json` — plugin manifest (name, description, version)
+- `.mcp.json` — starts the MCP server automatically, providing all vault tools
+- `agents/octopal.agent.md` — the agent persona and instructions
+- `skills/octopal/SKILL.md` — PARA method instructions loaded on task context
+- `commands/ingest.md` — `/octopal:ingest` slash command
+
+**Install as a plugin:**
+```bash
+# Claude Code
+claude /plugin install /path/to/octopal
+
+# Copilot CLI (from marketplace)
+copilot /plugin install /path/to/octopal
 ```
 
 ### How packages reference each other
