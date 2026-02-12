@@ -17,6 +17,13 @@ export interface ServerConfig {
   tokenSecret?: string;
 }
 
+export interface DiscordConfig {
+  /** Discord bot token */
+  botToken: string;
+  /** Discord user IDs allowed to message the bot */
+  allowedUsers: string[];
+}
+
 export interface OctopalUserConfig {
   /** GitHub repo in owner/name format (e.g. "ryan/vault") */
   vaultRepo?: string;
@@ -24,6 +31,8 @@ export interface OctopalUserConfig {
   vaultRemoteUrl?: string;
   /** Server configuration */
   server?: ServerConfig;
+  /** Discord connector configuration */
+  discord?: DiscordConfig;
 }
 
 /** Resolved config with all paths filled in */
@@ -38,6 +47,7 @@ export interface ResolvedConfig {
     passwordHash?: string;
     tokenSecret?: string;
   };
+  discord?: DiscordConfig;
 }
 
 export async function loadConfig(): Promise<ResolvedConfig> {
@@ -61,6 +71,16 @@ export async function loadConfig(): Promise<ResolvedConfig> {
     base.server.port = parseInt(process.env.OCTOPAL_SERVER_PORT, 10);
   }
 
+  // Discord env var overrides
+  const envBotToken = process.env.OCTOPAL_DISCORD_BOT_TOKEN;
+  const envAllowedUsers = process.env.OCTOPAL_DISCORD_ALLOWED_USERS;
+  if (envBotToken) {
+    base.discord = {
+      botToken: envBotToken,
+      allowedUsers: envAllowedUsers ? envAllowedUsers.split(",").map((s) => s.trim()) : [],
+    };
+  }
+
   try {
     const raw = await fs.readFile(CONFIG_PATH, "utf-8");
     const saved = JSON.parse(raw) as OctopalUserConfig;
@@ -76,6 +96,13 @@ export async function loadConfig(): Promise<ResolvedConfig> {
       base.server.port = saved.server.port ?? base.server.port;
       base.server.passwordHash = saved.server.passwordHash;
       base.server.tokenSecret = saved.server.tokenSecret;
+    }
+    if (saved.discord) {
+      base.discord ??= { botToken: saved.discord.botToken, allowedUsers: [] };
+      base.discord.botToken = base.discord.botToken || saved.discord.botToken;
+      base.discord.allowedUsers = base.discord.allowedUsers.length
+        ? base.discord.allowedUsers
+        : saved.discord.allowedUsers ?? [];
     }
   } catch {
     // No config file yet — that's fine

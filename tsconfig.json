@@ -18,7 +18,8 @@
   "references": [
     { "path": "packages/core" },
     { "path": "packages/cli" },
-    { "path": "packages/server" }
+    { "path": "packages/server" },
+    { "path": "packages/connector-discord" }
   ],
   "files": []
 }

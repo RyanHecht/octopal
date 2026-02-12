@@ -13,8 +13,9 @@ This document explains how octopal works, the patterns it uses, and how to exten
 5. [The Copilot SDK](#the-copilot-sdk)
 6. [How to Add a New Agent Tool](#how-to-add-a-new-agent-tool)
 7. [How to Build a New Connector](#how-to-build-a-new-connector)
-8. [Common Tasks](#common-tasks)
-9. [Troubleshooting](#troubleshooting)
+8. [Discord Connector](#discord-connector)
+9. [Common Tasks](#common-tasks)
+10. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -780,6 +781,69 @@ class DiscordConnector implements OctopalConnector {
 - **Auth scope:** Connectors need a token with the `connector` scope. Create one with `POST /auth/token`.
 - **Streaming:** During a response, the daemon sends `chat.delta` events. Connectors can use these for typing indicators or chunked message delivery.
 - **One agent, many channels:** The daemon runs a single `OctopalAgent` instance. Each channel gets its own session but shares the same skills, identity, and vault.
+
+---
+
+## Discord Connector
+
+The Discord connector (`@octopal/connector-discord`) is a built-in connector that runs **inside the daemon process** rather than as an external WebSocket client. It uses the `SessionStore` directly, avoiding WS overhead.
+
+### Architecture
+
+```
+octopal serve
+├── Fastify + WS (CLI, external connectors)
+├── DiscordConnector (discord.js → SessionStore)
+└── SessionStore + OctopalAgent
+```
+
+### Setup
+
+1. **Create a Discord bot** at [discord.com/developers](https://discord.com/developers/applications):
+   - New Application → Bot → copy the bot token
+   - Enable **Message Content Intent** under Bot → Privileged Gateway Intents
+   - Generate an invite URL under OAuth2 → URL Generator with `bot` scope and `Send Messages` + `Read Message History` permissions
+   - Invite the bot to your server (it responds to DMs, not server messages)
+
+2. **Configure octopal** — add to `~/.octopal/config.json`:
+
+   ```json
+   {
+     "discord": {
+       "botToken": "your-bot-token",
+       "allowedUsers": ["123456789012345678"]
+     }
+   }
+   ```
+
+   Or use environment variables:
+   ```bash
+   OCTOPAL_DISCORD_BOT_TOKEN=your-bot-token
+   OCTOPAL_DISCORD_ALLOWED_USERS=123456789012345678,987654321098765432
+   ```
+
+3. **Start the daemon** — `octopal serve` will automatically start the Discord connector if `discord.botToken` is configured.
+
+### How to find your Discord user ID
+
+Enable Developer Mode in Discord (Settings → Advanced → Developer Mode), then right-click your username and select "Copy User ID".
+
+### Design details
+
+- **DMs only** — the bot only responds to direct messages, not guild channel messages.
+- **User whitelist** — only Discord user IDs in `allowedUsers` can interact with the bot. Others are silently ignored.
+- **Sessions** — each Discord user gets their own session (`discord:{userId}`), preserving conversation context across messages.
+- **Typing indicator** — the bot shows a typing indicator while the agent processes the message.
+- **Message splitting** — responses longer than 2000 characters are automatically split at paragraph/line/sentence boundaries.
+
+### Key files
+
+| File | Purpose |
+|------|---------|
+| `packages/connector-discord/src/connector.ts` | Main `DiscordConnector` class |
+| `packages/connector-discord/src/messages.ts` | Message splitting utility |
+| `packages/server/src/server.ts` | Starts connector if Discord is configured |
+| `packages/core/src/config.ts` | `DiscordConfig` type and loading |
 
 ---
 

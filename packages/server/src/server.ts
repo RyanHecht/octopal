@@ -53,6 +53,16 @@ export async function createServer({ config, host, port }: ServerOptions) {
   // Register WebSocket handler
   registerWebSocket(fastify, config, agent, sessionStore);
 
+  // Start Discord connector if configured
+  if (config.discord?.botToken) {
+    const { DiscordConnector } = await import("@octopal/connector-discord");
+    const discord = new DiscordConnector(config.discord, sessionStore);
+    await discord.start();
+    fastify.addHook("onClose", async () => {
+      await discord.stop();
+    });
+  }
+
   const listenPort = port ?? config.server.port;
   const listenHost = host ?? "127.0.0.1";
 

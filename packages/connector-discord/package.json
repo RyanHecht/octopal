@@ -1,0 +1,15 @@
+{
+  "name": "@octopal/connector-discord",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@octopal/core": "*",
+    "discord.js": "^14.0.0"
+  }
+}
