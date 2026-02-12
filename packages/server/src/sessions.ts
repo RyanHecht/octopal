@@ -4,9 +4,9 @@ import type { OctopalAgent } from "@octopal/core";
 /**
  * Maps deterministic session IDs to live SDK sessions.
  *
- * Session IDs follow the pattern `{connector}:{channelId}`:
- * - `cli:abc123` — CLI user session (token JTI)
- * - `discord:123456` — Discord channel session
+ * Session IDs follow the pattern `{connector}-{channelId}`:
+ * - `cli-abc123` — CLI user session (token JTI)
+ * - `discord-123456` — Discord channel session
  */
 export class SessionStore {
   private sessions = new Map<string, CopilotSession>();

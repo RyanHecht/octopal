@@ -42,7 +42,7 @@ async function main() {
   const config = await loadConfig();
 
   // Step 1: Get the vault repo
-  let vaultRepo = process.argv[2] || config.vaultRepo;
+  let vaultRepo = process.argv[2];
 
   if (!vaultRepo) {
     console.log(
@@ -91,7 +91,7 @@ async function main() {
 
   // Save config (use the HTTPS URL that gh provides auth for)
   const remoteUrl = `https://github.com/${vaultRepo}.git`;
-  await saveConfig({ vaultRepo, vaultRemoteUrl: remoteUrl });
+  await saveConfig({ vaultRemoteUrl: remoteUrl });
   console.log(`Config saved to ${config.configPath}`);
   console.log(`Vault will be at: ${config.vaultPath}\n`);
 
@@ -233,7 +233,7 @@ async function main() {
   console.log("─".repeat(60));
   console.log("\n🐙 Your vault is ready!\n");
   console.log(`  📂 ${config.vaultPath}`);
-  console.log(`  🔗 ${vaultRepo}`);
+  console.log(`  🔗 ${remoteUrl}`);
   console.log(
     `\n  Open ${config.vaultPath} in Obsidian to start using it.`,
   );

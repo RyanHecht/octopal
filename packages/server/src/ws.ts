@@ -108,7 +108,7 @@ async function handleChatSend(
     return;
   }
 
-  const sessionId = requestedSessionId ?? `cli:${auth.jti}`;
+  const sessionId = requestedSessionId ?? `cli-${auth.jti}`;
 
   try {
     const session = await sessionStore.getOrCreate(sessionId, {
@@ -178,7 +178,7 @@ async function handleConnectorMessage(
     return;
   }
 
-  const sessionId = `${connectorName}:${channelId}`;
+  const sessionId = `${connectorName}-${channelId}`;
 
   try {
     const session = await sessionStore.getOrCreate(sessionId, {

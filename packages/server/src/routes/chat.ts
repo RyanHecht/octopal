@@ -19,7 +19,7 @@ export function chatRoutes(config: ResolvedConfig, sessionStore: SessionStore) {
         return reply.status(400).send({ error: "text field is required" });
       }
 
-      const sessionId = requestedSessionId ?? `cli:${payload.jti}`;
+      const sessionId = requestedSessionId ?? `cli-${payload.jti}`;
 
       try {
         const session = await sessionStore.getOrCreate(sessionId);

@@ -24,7 +24,7 @@ export {
 export type { KnowledgeEntry, KnowledgeIndex, KnowledgeCategory } from "./knowledge.js";
 export { runPreprocessor } from "./preprocessor.js";
 export type { PreprocessorResult } from "./preprocessor.js";
-export { loadConfig, saveConfig, isConfigured } from "./config.js";
+export { loadConfig, saveConfig, isConfigured, CONFIG_TEMPLATE } from "./config.js";
 export type { OctopalUserConfig, ResolvedConfig, ServerConfig, DiscordConfig } from "./config.js";
 export type * from "./types.js";
 export type { OctopalConnector, InboundMessage, OutboundMessage } from "./connector.js";

@@ -64,7 +64,7 @@ export class DiscordConnector {
     const text = message.content.trim();
     if (!text) return;
 
-    const sessionId = `discord:${message.author.id}`;
+    const sessionId = `discord-${message.author.id}`;
     const channel = message.channel;
 
     if (!("sendTyping" in channel)) return;

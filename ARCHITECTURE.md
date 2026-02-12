@@ -206,11 +206,8 @@ What happens:
 Manages `~/.octopal/config.json` and resolves the vault location.
 
 **Config file format:**
-```json
-{
-  "vaultRepo": "username/vault",
-  "vaultRemoteUrl": "git@github.com:username/vault.git"
-}
+```toml
+vaultRemoteUrl = "https://github.com/username/vault.git"
 ```
 
 **Key functions:**
@@ -467,16 +464,14 @@ octopal serve                    # Start daemon on port 3847
 octopal serve --port 8080        # Custom port
 ```
 
-**Config extension:** `~/.octopal/config.json` gains a `server` field:
-```json
-{
-  "vaultRepo": "user/vault",
-  "server": {
-    "port": 3847,
-    "passwordHash": "salt:hash...",
-    "tokenSecret": "hex..."
-  }
-}
+**Config extension:** `~/.octopal/config.toml` gains a `server` field:
+```toml
+vaultRemoteUrl = "https://github.com/user/vault.git"
+
+[server]
+port = 3847
+passwordHash = "salt:hash..."
+tokenSecret = "hex..."
 ```
 
 ### `.octopal/conventions.md` — User-Defined Conventions
@@ -911,7 +906,7 @@ export OCTOPAL_HOME="$OCTOPAL_TEST_DIR/home"
 export OCTOPAL_VAULT_PATH="$OCTOPAL_TEST_DIR/vault"
 mkdir -p "$OCTOPAL_HOME" "$OCTOPAL_VAULT_PATH"
 cd "$OCTOPAL_VAULT_PATH" && git init && git commit --allow-empty -m "init"
-echo '{"vaultRepo":"test/vault"}' > "$OCTOPAL_HOME/config.json"
+echo 'vaultRemoteUrl = "https://github.com/test/vault.git"' > "$OCTOPAL_HOME/config.toml"
 
 # Run commands
 node packages/cli/dist/index.js ingest "test note"

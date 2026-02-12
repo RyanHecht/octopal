@@ -1,11 +1,12 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
+import * as TOML from "smol-toml";
 
 const OCTOPAL_DIR = process.env.OCTOPAL_HOME
   ? path.resolve(process.env.OCTOPAL_HOME)
   : path.join(os.homedir(), ".octopal");
-const CONFIG_PATH = path.join(OCTOPAL_DIR, "config.json");
+const CONFIG_PATH = path.join(OCTOPAL_DIR, "config.toml");
 const VAULT_DIR = path.join(OCTOPAL_DIR, "vault");
 
 export interface ServerConfig {
@@ -25,9 +26,7 @@ export interface DiscordConfig {
 }
 
 export interface OctopalUserConfig {
-  /** GitHub repo in owner/name format (e.g. "ryan/vault") */
-  vaultRepo?: string;
-  /** Git remote URL — derived from vaultRepo if not set */
+  /** Git remote URL for the vault repo */
   vaultRemoteUrl?: string;
   /** Server configuration */
   server?: ServerConfig;
@@ -40,7 +39,6 @@ export interface ResolvedConfig {
   configDir: string;
   configPath: string;
   vaultPath: string;
-  vaultRepo?: string;
   vaultRemoteUrl?: string;
   server: {
     port: number;
@@ -49,6 +47,31 @@ export interface ResolvedConfig {
   };
   discord?: DiscordConfig;
 }
+
+/** Commented config template written by `octopal init` */
+export const CONFIG_TEMPLATE = `# Octopal configuration
+# See: https://github.com/ryanhecht/octopal
+
+# Git remote URL for your PARA vault
+# vaultRemoteUrl = "https://github.com/youruser/octopal-vault.git"
+
+[server]
+# Port for the octopal daemon (default: 3847)
+# port = 3847
+
+# Set via: octopal serve --set-password
+# passwordHash = ""
+
+# Auto-generated on first login
+# tokenSecret = ""
+
+[discord]
+# Bot token for the Discord connector
+# botToken = ""
+
+# Discord user IDs allowed to interact with the bot
+# allowedUsers = []
+`;
 
 export async function loadConfig(): Promise<ResolvedConfig> {
   const base: ResolvedConfig = {
@@ -83,14 +106,13 @@ export async function loadConfig(): Promise<ResolvedConfig> {
 
   try {
     const raw = await fs.readFile(CONFIG_PATH, "utf-8");
-    const saved = JSON.parse(raw) as OctopalUserConfig;
+    const saved = TOML.parse(raw) as unknown as OctopalUserConfig;
 
-    if (saved.vaultRepo) {
-      base.vaultRepo = saved.vaultRepo;
-      base.vaultRemoteUrl ??= `https://github.com/${saved.vaultRepo}.git`;
-    }
     if (saved.vaultRemoteUrl) {
       base.vaultRemoteUrl ??= saved.vaultRemoteUrl;
+    } else if ((saved as Record<string, unknown>).vaultRepo) {
+      // Backward compat: old configs may have vaultRepo instead
+      base.vaultRemoteUrl ??= `https://github.com/${(saved as Record<string, unknown>).vaultRepo}.git`;
     }
     if (saved.server) {
       base.server.port = saved.server.port ?? base.server.port;
@@ -104,7 +126,11 @@ export async function loadConfig(): Promise<ResolvedConfig> {
         ? base.discord.allowedUsers
         : saved.discord.allowedUsers ?? [];
     }
-  } catch {
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+      // Parse error or unexpected failure — don't swallow it
+      throw new Error(`Failed to load ${CONFIG_PATH}: ${err instanceof Error ? err.message : err}`);
+    }
     // No config file yet — that's fine
   }
 
@@ -118,7 +144,7 @@ export async function saveConfig(config: OctopalUserConfig): Promise<void> {
   let existing: OctopalUserConfig = {};
   try {
     const raw = await fs.readFile(CONFIG_PATH, "utf-8");
-    existing = JSON.parse(raw) as OctopalUserConfig;
+    existing = TOML.parse(raw) as unknown as OctopalUserConfig;
   } catch {
     // No existing config
   }
@@ -128,9 +154,9 @@ export async function saveConfig(config: OctopalUserConfig): Promise<void> {
   if (existing.server || config.server) {
     merged.server = { ...existing.server, ...config.server };
   }
-  await fs.writeFile(CONFIG_PATH, JSON.stringify(merged, null, 2) + "\n", "utf-8");
+  await fs.writeFile(CONFIG_PATH, TOML.stringify(merged as Record<string, unknown>) + "\n", "utf-8");
 }
 
 export function isConfigured(config: ResolvedConfig): boolean {
-  return !!config.vaultRepo || !!config.vaultRemoteUrl;
+  return !!config.vaultRemoteUrl;
 }

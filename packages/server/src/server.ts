@@ -63,16 +63,16 @@ export async function createServer({ config, host, port }: ServerOptions) {
     });
   }
 
-  const listenPort = port ?? config.server.port;
-  const listenHost = host ?? "127.0.0.1";
-
-  await fastify.listen({ port: listenPort, host: listenHost });
-
   // Graceful cleanup
   fastify.addHook("onClose", async () => {
     await sessionStore.destroyAll();
     await agent.stop();
   });
+
+  const listenPort = port ?? config.server.port;
+  const listenHost = host ?? "127.0.0.1";
+
+  await fastify.listen({ port: listenPort, host: listenHost });
 
   return fastify;
 }

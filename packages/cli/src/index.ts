@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 
-import { OctopalAgent, loadConfig, isConfigured } from "@octopal/core";
+import { OctopalAgent, loadConfig, isConfigured, CONFIG_TEMPLATE } from "@octopal/core";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
 
 const HELP = `
 octopal — personal AI assistant with persistent knowledge vault
 
 Usage:
+  octopal init               Write a default config.toml to ~/.octopal/
   octopal setup              Interactive vault setup (first-time onboarding)
   octopal chat <text>        Chat with Octopal (uses daemon if running, else standalone)
   octopal ingest <text>      Ingest a note, brain dump, or transcript
@@ -16,7 +19,7 @@ Usage:
   octopal --help             Show this help
 
 Config:
-  Stored in ~/.octopal/config.json (created by 'octopal setup')
+  Stored in ~/.octopal/config.toml (created by 'octopal init' or 'octopal setup')
   Vault is cloned to ~/.octopal/vault/
 
 Environment overrides:
@@ -26,6 +29,7 @@ Environment overrides:
   OCTOPAL_SERVER_PORT        Override server port (default: 3847)
 
 Examples:
+  octopal init
   octopal setup
   octopal chat "What projects am I working on?"
   octopal ingest "Met with Alice about the website redesign. New colors by Friday."
@@ -45,6 +49,28 @@ async function main() {
   }
 
   const command = args[0];
+
+  if (command === "init") {
+    const config = await loadConfig();
+    const configPath = path.join(config.configDir, "config.toml");
+    const force = args.includes("--force") || args.includes("-f");
+
+    if (!force) {
+      try {
+        await fs.access(configPath);
+        console.error(`Config already exists at ${configPath}`);
+        console.error("Use --force to overwrite.");
+        process.exit(1);
+      } catch {
+        // File doesn't exist — good
+      }
+    }
+
+    await fs.mkdir(config.configDir, { recursive: true });
+    await fs.writeFile(configPath, CONFIG_TEMPLATE, "utf-8");
+    console.log(`Config written to ${configPath}`);
+    return;
+  }
 
   if (command === "setup") {
     // Delegate to setup script — no config needed yet
