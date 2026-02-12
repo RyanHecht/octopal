@@ -111,19 +111,27 @@ async function handleChatSend(
   const sessionId = requestedSessionId ?? `cli-${auth.jti}`;
 
   try {
-    const session = await sessionStore.getOrCreate(sessionId, {
-      onEvent: (event) => {
-        if (event.type === "assistant.message_delta" && socket.readyState === socket.OPEN) {
-          socket.send(JSON.stringify({
-            type: "chat.delta",
-            sessionId,
-            content: event.data.deltaContent ?? "",
-          }));
-        }
-      },
+    const onEvent: import("@github/copilot-sdk").SessionEventHandler = (event) => {
+      if (event.type === "assistant.message_delta" && socket.readyState === socket.OPEN) {
+        socket.send(JSON.stringify({
+          type: "chat.delta",
+          sessionId,
+          content: event.data.deltaContent ?? "",
+        }));
+      }
+    };
+
+    const { response, recovered } = await sessionStore.sendOrRecover(sessionId, text.trim(), {
+      onEvent,
     });
 
-    const response = await session.sendAndWait({ prompt: text.trim() }, 300_000);
+    if (recovered && socket.readyState === socket.OPEN) {
+      socket.send(JSON.stringify({
+        type: "chat.session_recovered",
+        sessionId,
+      }));
+    }
+
     const responseText = response?.data?.content ?? "";
 
     if (socket.readyState === socket.OPEN) {
@@ -181,19 +189,24 @@ async function handleConnectorMessage(
   const sessionId = `${connectorName}-${channelId}`;
 
   try {
-    const session = await sessionStore.getOrCreate(sessionId, {
-      onEvent: (event) => {
-        if (event.type === "assistant.message_delta" && socket.readyState === socket.OPEN) {
-          socket.send(JSON.stringify({
-            type: "chat.delta",
-            sessionId,
-            content: event.data.deltaContent ?? "",
-          }));
-        }
-      },
+    const onEvent: import("@github/copilot-sdk").SessionEventHandler = (event) => {
+      if (event.type === "assistant.message_delta" && socket.readyState === socket.OPEN) {
+        socket.send(JSON.stringify({
+          type: "chat.delta",
+          sessionId,
+          content: event.data.deltaContent ?? "",
+        }));
+      }
+    };
+
+    const { response, recovered } = await sessionStore.sendOrRecover(sessionId, text.trim(), {
+      onEvent,
     });
 
-    const response = await session.sendAndWait({ prompt: text.trim() }, 300_000);
+    if (recovered) {
+      console.log(`[${connectorName}] Session ${sessionId} was recovered after expiry`);
+    }
+
     const responseText = response?.data?.content ?? "";
 
     if (socket.readyState === socket.OPEN) {

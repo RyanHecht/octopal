@@ -22,11 +22,10 @@ export function chatRoutes(config: ResolvedConfig, sessionStore: SessionStore) {
       const sessionId = requestedSessionId ?? `cli-${payload.jti}`;
 
       try {
-        const session = await sessionStore.getOrCreate(sessionId);
-        const response = await session.sendAndWait({ prompt: text.trim() }, 300_000);
+        const { response, recovered } = await sessionStore.sendOrRecover(sessionId, text.trim());
         const responseText = response?.data?.content ?? "";
 
-        return { sessionId, text: responseText };
+        return { sessionId, text: responseText, recovered };
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
         return reply.status(500).send({ error: message });

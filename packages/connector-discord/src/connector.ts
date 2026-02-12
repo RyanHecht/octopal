@@ -9,6 +9,11 @@ export interface ConnectorSession {
 
 export interface ConnectorSessionStore {
   getOrCreate(sessionId: string): Promise<ConnectorSession>;
+  sendOrRecover(
+    sessionId: string,
+    prompt: string,
+    options?: { timeoutMs?: number },
+  ): Promise<{ response: { data?: { content?: string } } | undefined; recovered: boolean }>;
 }
 
 export class DiscordConnector {
@@ -76,9 +81,13 @@ export class DiscordConnector {
     await channel.sendTyping().catch(() => {});
 
     try {
-      const session = await this.sessionStore.getOrCreate(sessionId);
-      const response = await session.sendAndWait({ prompt: text }, 300_000);
+      const { response, recovered } = await this.sessionStore.sendOrRecover(sessionId, text);
       const responseText = response?.data?.content ?? "";
+
+      if (recovered) {
+        console.log(`[discord] Session ${sessionId} was recovered after expiry`);
+        await channel.send("⚡ *Session refreshed — conversation history was reset.*").catch(() => {});
+      }
 
       if (!responseText) return;
 
