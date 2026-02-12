@@ -1,11 +1,11 @@
 {
   "name": "octopal",
-  "version": "0.1.0",
-  "description": "PARA-method personal knowledge management — ingest notes, brain dumps, and transcripts into an Obsidian vault with automatic task extraction and knowledge linking.",
+  "version": "0.2.0",
+  "description": "Personal AI assistant with a persistent knowledge vault — ingest notes, brain dumps, and transcripts with automatic task extraction, knowledge linking, and extensible skills.",
   "author": {
     "name": "octopal"
   },
   "repository": "https://github.com/ryanmandel/octopal",
   "license": "MIT",
-  "keywords": ["para", "knowledge-management", "obsidian", "vault", "tasks", "notes"]
+  "keywords": ["knowledge-management", "obsidian", "vault", "tasks", "notes", "skills", "para"]
 }

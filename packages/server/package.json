@@ -1,11 +1,11 @@
 {
-  "name": "@octopal/mcp-server",
+  "name": "@octopal/server",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
   "bin": {
-    "octopal-mcp-server": "./dist/index.js"
+    "octopal-server": "./dist/index.js"
   },
   "scripts": {
     "build": "tsc",
@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@octopal/core": "*",
-    "@modelcontextprotocol/sdk": "^1.12.1",
-    "zod": "^4.3.6"
+    "fastify": "^5.3.3",
+    "@fastify/websocket": "^11.2.0"
   }
 }

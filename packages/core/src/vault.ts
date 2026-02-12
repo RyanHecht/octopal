@@ -7,10 +7,25 @@ import type { VaultConfig } from "./types.js";
 const exec = promisify(execFile);
 
 export class VaultManager {
+  private writeLock: Promise<void> = Promise.resolve();
+
   constructor(private config: VaultConfig) {}
 
   get root(): string {
     return this.config.localPath;
+  }
+
+  /** Acquire a mutex for vault write operations */
+  private async withWriteLock<T>(fn: () => Promise<T>): Promise<T> {
+    let release!: () => void;
+    const prev = this.writeLock;
+    this.writeLock = new Promise((resolve) => { release = resolve; });
+    await prev;
+    try {
+      return await fn();
+    } finally {
+      release();
+    }
   }
 
   /** Ensure the vault exists locally — clone if needed, pull if it does */
@@ -49,16 +64,18 @@ export class VaultManager {
   }
 
   async commitAndPush(message: string): Promise<void> {
-    await this.git("add", "-A");
-    const { stdout } = await this.git("status", "--porcelain");
-    if (!stdout.trim()) return; // nothing to commit
+    return this.withWriteLock(async () => {
+      await this.git("add", "-A");
+      const { stdout } = await this.git("status", "--porcelain");
+      if (!stdout.trim()) return; // nothing to commit
 
-    await this.git("commit", "-m", message);
-    try {
-      await this.git("push");
-    } catch {
-      // No remote or offline — commit is saved locally
-    }
+      await this.git("commit", "-m", message);
+      try {
+        await this.git("push");
+      } catch {
+        // No remote or offline — commit is saved locally
+      }
+    });
   }
 
   async readFile(relativePath: string): Promise<string> {

@@ -104,9 +104,6 @@ This is an **npm workspaces monorepo** — a single git repo containing multiple
 
 ```
 octopal/
-├── .claude-plugin/
-│   └── plugin.json               # Plugin manifest (Claude Code + Copilot CLI)
-├── .mcp.json                     # MCP server config (auto-started by plugin)
 ├── .github/
 │   ├── agents/
 │   │   ├── octopal.agent.md      # Agent definition (repo-level, for dev)
@@ -116,8 +113,12 @@ octopal/
 ├── agents/
 │   └── octopal.agent.md          # Agent definition (plugin-level)
 ├── skills/
-│   └── octopal/
-│       └── SKILL.md              # PARA instructions for any AI client
+│   ├── octopal/
+│   │   └── SKILL.md              # Full instructions for plugin/external AI clients
+│   ├── para/
+│   │   └── SKILL.md              # PARA vault-organization skill (bundled)
+│   └── github/
+│       └── SKILL.md              # GitHub workflow conventions (bundled)
 ├── commands/
 │   └── ingest.md                 # /octopal:ingest slash command
 ├── package.json                  # Root — defines workspaces, shared dev deps
@@ -129,44 +130,45 @@ octopal/
 │   │   ├── tsconfig.json
 │   │   └── src/
 │   │       ├── index.ts          # Re-exports everything
-│   │       ├── agent.ts          # Copilot SDK session + tool wiring
-│   │       ├── tools.ts          # Harness-agnostic tool definitions
-│   │       ├── prompts.ts        # Shared prompt strings (single source of truth)
+│   │       ├── agent.ts          # Copilot SDK session + tool/skill wiring
+│   │       ├── auth.ts           # Password hashing (scrypt), JWT minting/verification
+│   │       ├── connector.ts      # Channel connector interface (Discord, web, etc.)
+│   │       ├── tools.ts          # Vault tools (defineTool-based, SDK-native)
+│   │       ├── prompts.ts        # Core identity prompt (single source of truth)
 │   │       ├── vault.ts          # Git + file operations on the vault
 │   │       ├── para.ts           # PARA directory structure management
 │   │       ├── tasks.ts          # Obsidian Tasks format parser/formatter
-│   │       ├── ingest.ts         # Ingestion pipeline (orchestrates agent)
 │   │       └── types.ts          # Shared TypeScript types
 │   ├── cli/                      # @octopal/cli — command-line entry point
 │   │   ├── package.json
 │   │   ├── tsconfig.json
 │   │   └── src/
-│   │       └── index.ts          # CLI argument parsing, calls IngestPipeline
-│   └── mcp-server/               # @octopal/mcp-server — MCP tool server
+│   │       ├── index.ts          # CLI argument parsing, routes to handlers
+│   │       ├── setup.ts          # Interactive onboarding wizard
+│   │       ├── skills.ts         # `octopal skills list/create` commands
+│   │       └── client.ts         # Daemon WebSocket client (dual-mode CLI)
+│   └── server/                   # @octopal/server — daemon (HTTP + WebSocket)
 │       ├── package.json
 │       ├── tsconfig.json
 │       └── src/
-│           └── index.ts          # MCP stdio server, registers all vault tools
-└── vault-template/               # Starter PARA vault (copy this for new vaults)
+│           ├── index.ts          # Entry point: parse args, start server
+│           ├── server.ts         # Fastify app setup, OctopalAgent init
+│           ├── protocol.ts       # WebSocket message type definitions
+│           ├── sessions.ts       # SessionStore: maps channel IDs → SDK sessions
+│           ├── ws.ts             # WebSocket handler (auth, chat, connectors)
+│           └── routes/
+│               ├── auth.ts       # POST /auth/token, GET /auth/tokens, DELETE /auth/token/:id
+│               ├── chat.ts       # POST /chat (one-shot request/response)
+│               └── vault.ts      # GET /vault/structure, GET /vault/note/*, POST /vault/search
+└── vault-template/               # Starter vault (copy this for new vaults)
 ```
 
 ### Plugin structure
 
-The repo root is itself a Claude Code / Copilot CLI plugin. When installed:
-- `.claude-plugin/plugin.json` — plugin manifest (name, description, version)
-- `.mcp.json` — starts the MCP server automatically, providing all vault tools
+The repo root can be installed as a Copilot CLI plugin. When installed:
 - `agents/octopal.agent.md` — the agent persona and instructions
-- `skills/octopal/SKILL.md` — PARA method instructions loaded on task context
+- `skills/octopal/SKILL.md` — full knowledge assistant instructions for the plugin context
 - `commands/ingest.md` — `/octopal:ingest` slash command
-
-**Install as a plugin:**
-```bash
-# Claude Code
-claude /plugin install /path/to/octopal
-
-# Copilot CLI (from marketplace)
-copilot /plugin install /path/to/octopal
-```
 
 ### How packages reference each other
 
@@ -184,14 +186,14 @@ npm run typecheck      # Same as build but type-checks without emitting (uses ts
 ```
 
 What happens:
-1. TypeScript reads `tsconfig.json` at the root, which references `packages/core` and `packages/cli`
+1. TypeScript reads `tsconfig.json` at the root, which references `packages/core`, `packages/cli`, and `packages/server`
 2. It builds `core` first (no dependencies), outputting `.js` and `.d.ts` files to `packages/core/dist/`
-3. Then it builds `cli`, which imports from `@octopal/core` (resolved via npm workspace link to `packages/core/dist/`)
+3. Then it builds `cli` and `server`, which import from `@octopal/core` (resolved via npm workspace link to `packages/core/dist/`)
 
-**To add a new package** (e.g., `packages/server`):
-1. Create `packages/server/package.json` with `"@octopal/core": "*"` as a dependency
-2. Create `packages/server/tsconfig.json` extending `../../tsconfig.base.json` with a reference to `../core`
-3. Add `{ "path": "packages/server" }` to the root `tsconfig.json` references
+**To add a new package** (e.g., `packages/discord`):
+1. Create `packages/discord/package.json` with `"@octopal/core": "*"` as a dependency
+2. Create `packages/discord/tsconfig.json` extending `../../tsconfig.base.json` with a reference to `../core`
+3. Add `{ "path": "packages/discord" }` to the root `tsconfig.json` references
 4. Run `npm install` to link the workspace
 
 ---
@@ -301,24 +303,39 @@ This is the brain of octopal. It creates a Copilot SDK session with custom tools
 3. `sendAndWait(session, prompt)` sends a message and waits for the AI to finish
 4. `run(prompt)` is a convenience that creates a session, sends one prompt, and cleans up
 
-**The tools** are defined in `tools.ts` as harness-agnostic `OctopalToolDef` objects (name, description, Zod schema, handler). These are consumed by:
-- `buildCopilotTools()` / `buildAllVaultTools()` — wraps them with `defineTool()` for the Copilot SDK
-- `@octopal/mcp-server` — registers them as MCP tools using the Zod shape directly
+**The tools** are defined in `tools.ts` using the Copilot SDK's `defineTool()` directly.
 
 ### `prompts.ts` — Shared Prompts
 
 Single source of truth for all prompt strings. Exports:
-- `SYSTEM_PROMPT` — main PARA agent instructions (used by `agent.ts` and the MCP server)
-- `INGEST_INSTRUCTIONS` — step-by-step ingestion workflow (used by `ingest.ts`)
+- `SYSTEM_PROMPT` — core identity + knowledge-building philosophy (generic, no PARA specifics)
 - `SETUP_PROMPT` — onboarding interview instructions (used by `cli/setup.ts`)
+
+PARA-specific details (directory structure, task format, etc.) live in `skills/para/SKILL.md` and are loaded via the SDK's `skillDirectories` support.
 
 ### `tools.ts` — Tool Definitions
 
-Harness-agnostic tool definitions. Key exports:
-- `OctopalToolDef` — interface for a tool (name, description, Zod parameters, async handler)
-- `buildVaultTools(deps)` — returns all tools as raw `OctopalToolDef` objects
-- `buildCopilotTools(deps)` — wraps tools for the Copilot SDK (uses `defineTool()`)
-- `buildAllVaultTools(deps)` — returns Copilot SDK tools as an array
+Vault tools built with the Copilot SDK's `defineTool()`. Key exports:
+- `buildVaultTools(deps)` — returns all vault tools as a `Tool[]` array
+- `ToolDeps` — interface: `{ vault, para, tasks, client }`
+
+Notable tools:
+- `analyze_input` — runs the two-phase preprocessor (deterministic + semantic matching) against the knowledge base. The PARA skill instructs the agent to call this before processing raw input.
+- `read_note`, `write_note`, `append_to_note` — vault file operations
+- `save_knowledge`, `lookup_knowledge` — knowledge base management
+- `commit_changes` — git commit and push
+
+### `auth.ts` — Authentication
+
+Provides password hashing and JWT token management using only built-in Node.js crypto (no native dependencies).
+
+**Key exports:**
+- `hashPassword(password)` — Hash a password using scrypt with random salt. Returns `salt:hash` string.
+- `verifyPassword(password, hash)` — Verify a password against a stored hash using timing-safe comparison.
+- `generateTokenSecret()` — Generate a random 256-bit hex string for JWT signing.
+- `mintToken(secret, options)` — Create a signed JWT (HS256) with scopes, label, and expiry.
+- `verifyToken(secret, token)` — Verify and decode a JWT. Throws on invalid/expired tokens.
+- `TokenPayload` — Type: `{ jti, sub, scopes, iat, exp }`
 
 ### `knowledge.ts` — Knowledge Index
 
@@ -336,17 +353,17 @@ Runs before the main agent during ingest. Phase 1 (deterministic) matches known 
 **Key exports:**
 - `runPreprocessor(client, vault, rawInput)` — Returns matched knowledge entries, high-confidence new aliases, low-confidence triage items, and new entity candidates
 
-### `ingest.ts` — Ingestion Pipeline
-
-Orchestrates the full ingest flow: runs the preprocessor, auto-applies high-confidence aliases, builds an enriched prompt with matched knowledge context, runs the main agent, and auto-commits if needed.
-
 ### `cli/index.ts` — CLI Entry Point
 
 Parses command-line arguments and routes to the right handler. Reads config from `~/.octopal/config.json` (created by `octopal setup`).
 
 Commands:
 - `octopal setup` — Launches the interactive onboarding agent
-- `octopal ingest <text>` — Processes raw text through the ingestion pipeline
+- `octopal chat <text>` — Chat with Octopal (uses daemon if running, falls back to standalone)
+- `octopal ingest <text>` — Processes raw text through the agent with PARA skill guidance
+- `octopal skills list|create` — Manage skills
+
+**Dual-mode chat:** The `chat` command first attempts to connect to a running daemon via WebSocket (using `DaemonClient` from `client.ts`). If the daemon is available, the message is routed through it — sharing sessions with other connected clients. If not, it falls back to a standalone `OctopalAgent` session.
 
 ### `cli/setup.ts` — Interactive Onboarding Agent
 
@@ -378,27 +395,88 @@ const session = await client.createSession({
 
 This is how any connector can implement interactive conversations — Discord, web UI, etc. would implement the same handler pattern with their own I/O.
 
-### `mcp-server/index.ts` — MCP Tool Server
+### `connector.ts` — Channel Connector Interface
 
-An MCP (Model Context Protocol) server that exposes all octopal vault tools over stdio. This allows any MCP-aware AI client (GitHub Copilot CLI, Claude Code, VS Code Copilot Chat, etc.) to use octopal's tools directly.
+Defines the `OctopalConnector` interface for channel integrations (Discord, web, Telegram, etc.):
 
-**How it works:**
-1. Creates an `McpServer` instance with tool and prompt capabilities
-2. Registers all tools from `buildVaultTools()` — the Zod schemas are passed directly as the MCP SDK understands Zod shapes
-3. Registers the system prompt as an MCP prompt resource (`octopal-system`)
-4. Vault initialization is lazy — deferred until the first tool call
-5. Connects via `StdioServerTransport` (the standard for local MCP servers)
-
-**Registration:**
-```bash
-# Copilot CLI
-copilot /mcp add octopal -- node ~/Documents/octopal/packages/mcp-server/dist/index.js
-
-# Claude Code
-claude mcp add octopal -- node ~/Documents/octopal/packages/mcp-server/dist/index.js
+```typescript
+interface OctopalConnector {
+  readonly name: string;
+  connect(daemonUrl: string, token: string): Promise<void>;
+  disconnect(): Promise<void>;
+}
 ```
 
-**Dual-mode architecture:** The standalone CLI (`@octopal/cli`) uses the Copilot SDK as its agent harness and includes features like the preprocessor pipeline. The MCP server exposes the same core tools but lets the host AI client be the agent — the host handles reasoning, tool selection, and conversation.
+Connectors are **WebSocket clients to the daemon**. They authenticate with a token (requiring the `connector` scope), register themselves via `connector.register`, then forward channel messages as `connector.message` and handle `connector.reply` to send responses back.
+
+Also defines `InboundMessage` and `OutboundMessage` types for channel-agnostic message passing.
+
+### `server/` — Daemon (Central Agent Server)
+
+The Octopal daemon — a Fastify server that owns the `OctopalAgent` instance and routes all interactions through it. All clients (CLI, connectors) connect via WebSocket.
+
+**Architecture:**
+- Single `OctopalAgent` instance, initialized at startup
+- `SessionStore` maps deterministic IDs (`{connector}:{channelId}`) to persistent SDK sessions
+- Sessions use `infiniteSessions` for automatic context compaction
+- Auth: admin password (scrypt hash) → mints scoped JWT bearer tokens for clients
+- Vault write safety via `VaultManager` write lock (no job queue needed)
+
+**REST API:**
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/auth/token` | Password | Mint a bearer token |
+| `GET` | `/auth/tokens` | Bearer (admin) | List issued tokens |
+| `DELETE` | `/auth/token/:id` | Bearer (admin) | Revoke a token |
+| `POST` | `/chat` | Bearer (chat) | One-shot chat (request/response) |
+| `GET` | `/vault/structure` | Bearer (read) | Read PARA structure |
+| `GET` | `/vault/note/*` | Bearer (read) | Read a note |
+| `POST` | `/vault/search` | Bearer (read) | Full-text search |
+| `GET` | `/health` | None | Health check + active session count |
+
+**WebSocket Protocol (`/ws`):**
+
+Auth via query param (`?token=...`) or first `{ type: "auth", token }` message.
+
+*Client → Daemon:*
+| Type | Scope | Description |
+|------|-------|-------------|
+| `chat.send` | `chat` | Send a message (streaming response via `chat.delta` → `chat.complete`) |
+| `connector.register` | `connector` | Register as a channel connector |
+| `connector.message` | `connector` | Forward a channel message (response via `connector.reply`) |
+| `ping` | — | Heartbeat |
+
+*Daemon → Client:*
+| Type | Description |
+|------|-------------|
+| `auth.ok` / `auth.error` | Authentication result |
+| `chat.delta` | Streaming response token |
+| `chat.complete` | Response finished |
+| `chat.error` | Error during chat |
+| `connector.ack` | Registration confirmed |
+| `connector.reply` | Reply to send back to channel |
+| `pong` | Heartbeat response |
+
+**Token scopes:** `chat`, `read`, `connector`, `admin`. A Discord bot gets `["connector"]`, a CLI gets `["chat", "read"]`, a dashboard gets `["read"]`.
+
+**Running:**
+```bash
+octopal serve --set-password     # Set admin password (first time)
+octopal serve                    # Start daemon on port 3847
+octopal serve --port 8080        # Custom port
+```
+
+**Config extension:** `~/.octopal/config.json` gains a `server` field:
+```json
+{
+  "vaultRepo": "user/vault",
+  "server": {
+    "port": 3847,
+    "passwordHash": "salt:hash...",
+    "tokenSecret": "hex..."
+  }
+}
+```
 
 ### `.octopal/conventions.md` — User-Defined Conventions
 
@@ -500,17 +578,67 @@ The SDK authenticates with GitHub Copilot. It tries these in order:
 
 ---
 
+## Skills System
+
+Octopal uses the Copilot SDK's native **skill directories** for extensibility. Skills are directories containing a `SKILL.md` file with YAML frontmatter and markdown instructions.
+
+### Three-Tier Skill Resolution
+
+When `OctopalAgent.createSession()` is called, it passes three `skillDirectories` to the SDK:
+
+1. **Bundled** (`<install>/skills/`) — shipped with octopal. Includes `para` (vault organization) and `github` (workflow conventions).
+2. **Vault** (`<vault>/.octopal/skills/`) — prompt-only skills synced via git, editable in Obsidian.
+3. **Local** (`~/.octopal/skills/`) — user-installed skills.
+
+The SDK automatically discovers `SKILL.md` files, parses their frontmatter, and injects their instructions into the session prompt.
+
+### Creating a Skill
+
+```bash
+octopal skills create my-skill
+# Creates ~/.octopal/skills/my-skill/SKILL.md
+```
+
+Or manually create a directory with a `SKILL.md`:
+
+```markdown
+---
+name: my-skill
+description: >
+  What this skill does.
+---
+
+# My Skill
+
+Instructions for the agent when this skill is active.
+```
+
+### Disabling Skills
+
+Pass `disabledSkills` to `createSession()`:
+
+```typescript
+const session = await agent.createSession({
+  disabledSkills: ["para"],  // disable the PARA vault-organization skill
+});
+```
+
+### User Identity
+
+Place `~/.octopal/identity.md` to inject personal context (name, role, preferences) into every session. This is read and appended to the system prompt automatically.
+
+---
+
 ## How to Add a New Agent Tool
 
-Tools are defined in `packages/core/src/tools.ts` in `buildVaultTools()`. They use the harness-agnostic `OctopalToolDef` format, which is automatically available in both the Copilot SDK CLI and the MCP server.
+Tools are defined in `packages/core/src/tools.ts` in `buildVaultTools()`. They use the Copilot SDK's `defineTool()` directly.
 
 ### Step-by-step
 
-1. **Define the tool** as an `OctopalToolDef` in the `buildVaultTools()` return object:
+1. **Define the tool** in the `buildVaultTools()` return array:
 
 ```typescript
-myNewTool: {
-  name: "my_new_tool",
+defineTool("my_new_tool", {
   description: "Does something useful with the vault",
   parameters: z.object({
     someParam: z.string().describe("What this parameter is for"),
@@ -520,14 +648,12 @@ myNewTool: {
     const result = await vault.readFile(someParam);
     return result;  // Return a string — this is what the AI sees
   },
-},
+}),
 ```
 
 2. **Rebuild**: `npm run build`
 
-The tool is now automatically available in:
-- The standalone CLI (`octopal ingest`) via the Copilot SDK
-- The MCP server (`octopal-mcp-server`) for any MCP client
+The tool is now automatically available in the standalone CLI and any connector.
 
 ### Tips for good tools
 
@@ -541,19 +667,34 @@ The tool is now automatically available in:
 
 ## How to Build a New Connector
 
-A "connector" is a new package that provides a different way to interact with octopal (Discord bot, HTTP server, desktop app, etc.).
+A "connector" bridges an external messaging channel (Discord, Telegram, web) to the Octopal daemon via WebSocket. Connectors are lightweight — they translate channel events to the daemon protocol and handle responses.
+
+### Architecture
+
+```
+Channel (Discord, etc.)
+    │
+    ▼
+Connector Process
+    │ WebSocket
+    ▼
+Octopal Daemon (octopal serve)
+    │
+    ▼
+OctopalAgent → SDK → LLM
+```
 
 ### Step-by-step
 
 1. **Create the package directory:**
 ```bash
-mkdir -p packages/myconnector/src
+mkdir -p packages/connector-discord/src
 ```
 
-2. **Create `packages/myconnector/package.json`:**
+2. **Create `packages/connector-discord/package.json`:**
 ```json
 {
-  "name": "@octopal/myconnector",
+  "name": "@octopal/connector-discord",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -563,12 +704,13 @@ mkdir -p packages/myconnector/src
     "start": "node dist/index.js"
   },
   "dependencies": {
-    "@octopal/core": "*"
+    "@octopal/core": "*",
+    "discord.js": "^14.0.0"
   }
 }
 ```
 
-3. **Create `packages/myconnector/tsconfig.json`:**
+3. **Create `packages/connector-discord/tsconfig.json`:**
 ```json
 {
   "extends": "../../tsconfig.base.json",
@@ -583,49 +725,61 @@ mkdir -p packages/myconnector/src
 }
 ```
 
-4. **Add it to the root `tsconfig.json` references:**
-```json
-{
-  "references": [
-    { "path": "packages/core" },
-    { "path": "packages/cli" },
-    { "path": "packages/myconnector" }
-  ]
+4. **Add it to the root `tsconfig.json` references.**
+
+5. **Implement the connector** — connect to the daemon, register, forward messages:
+
+```typescript
+import type { OctopalConnector } from "@octopal/core";
+
+class DiscordConnector implements OctopalConnector {
+  readonly name = "discord";
+  private ws: WebSocket | null = null;
+
+  async connect(daemonUrl: string, token: string): Promise<void> {
+    // Connect to daemon WebSocket
+    this.ws = new WebSocket(`${daemonUrl}?token=${encodeURIComponent(token)}`);
+
+    // Wait for auth.ok, then register
+    this.ws.send(JSON.stringify({
+      type: "connector.register",
+      name: this.name,
+      channelTypes: ["text", "dm"],
+    }));
+
+    // Listen for Discord messages and forward them
+    discordClient.on("messageCreate", (msg) => {
+      this.ws?.send(JSON.stringify({
+        type: "connector.message",
+        channelId: msg.channel.id,
+        authorId: msg.author.id,
+        authorName: msg.author.username,
+        text: msg.content,
+      }));
+    });
+
+    // Handle daemon replies — send back to Discord
+    this.ws.onmessage = (event) => {
+      const data = JSON.parse(String(event.data));
+      if (data.type === "connector.reply") {
+        discordClient.channels.fetch(data.channelId)
+          .then(ch => ch.send(data.text));
+      }
+    };
+  }
+
+  async disconnect(): Promise<void> {
+    this.ws?.close();
+  }
 }
 ```
 
-5. **Run `npm install`** to link the workspace.
+### Key points
 
-6. **Write your code** in `packages/myconnector/src/index.ts`:
-```typescript
-import { OctopalAgent, loadConfig } from "@octopal/core";
-
-const config = await loadConfig();
-const agent = new OctopalAgent({
-  vault: {
-    localPath: config.vaultPath,
-    remoteUrl: config.vaultRemoteUrl,
-  },
-});
-
-await agent.init();
-const session = await agent.createSession();
-
-// Use session.sendAndWait() or agent.run() to interact
-const response = await agent.sendAndWait(session, "What are my current projects?");
-console.log(response);
-
-await session.destroy();
-await agent.stop();
-```
-
-### Connector patterns
-
-**One-shot** (CLI style): Use `agent.run(prompt)` — creates a session, sends one prompt, cleans up.
-
-**Long-lived** (server/bot style): Use `agent.createSession()` once, then call `session.sendAndWait()` multiple times. The session maintains conversation history.
-
-**Multiple users**: Create one `OctopalAgent` instance, then create a separate `CopilotSession` per user/conversation.
+- **Deterministic session IDs:** The daemon maps `{connectorName}:{channelId}` to a persistent session. Same Discord channel = same conversation, with automatic context compaction.
+- **Auth scope:** Connectors need a token with the `connector` scope. Create one with `POST /auth/token`.
+- **Streaming:** During a response, the daemon sends `chat.delta` events. Connectors can use these for typing indicators or chunked message delivery.
+- **One agent, many channels:** The daemon runs a single `OctopalAgent` instance. Each channel gets its own session but shares the same skills, identity, and vault.
 
 ---
 

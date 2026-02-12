@@ -7,6 +7,8 @@ export interface VaultConfig {
 
 export interface OctopalConfig {
   vault: VaultConfig;
+  /** Base config directory (e.g. ~/.octopal) */
+  configDir: string;
 }
 
 export interface NoteMetadata {
@@ -18,11 +20,3 @@ export interface NoteMetadata {
   tags?: string[];
 }
 
-export interface IngestResult {
-  /** Notes created or updated */
-  notes: string[];
-  /** Tasks created */
-  tasks: string[];
-  /** Summary of what the agent did */
-  summary: string;
-}

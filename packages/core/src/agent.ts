@@ -1,16 +1,21 @@
 import { CopilotClient, CopilotSession } from "@github/copilot-sdk";
 import type { SessionEventHandler } from "@github/copilot-sdk";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import { VaultManager } from "./vault.js";
 import { ParaManager } from "./para.js";
 import { TaskManager } from "./tasks.js";
-import { buildAllVaultTools } from "./tools.js";
+import { buildVaultTools } from "./tools.js";
 import { SYSTEM_PROMPT } from "./prompts.js";
 import type { OctopalConfig } from "./types.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export class OctopalAgent {
   readonly client: CopilotClient;
   readonly vault: VaultManager;
-  private para: ParaManager;
+  readonly para: ParaManager;
   private tasks: TaskManager;
 
   constructor(private config: OctopalConfig) {
@@ -32,7 +37,12 @@ export class OctopalAgent {
     await this.client.stop();
   }
 
-  async createSession(options?: { onEvent?: SessionEventHandler }): Promise<CopilotSession> {
+  async createSession(options?: {
+    onEvent?: SessionEventHandler;
+    disabledSkills?: string[];
+    sessionId?: string;
+    infiniteSessions?: boolean;
+  }): Promise<CopilotSession> {
     const vaultStructure = await this.para.getStructure();
 
     // Load user-defined conventions if they exist
@@ -43,7 +53,18 @@ export class OctopalAgent {
       // No conventions file — use defaults only
     }
 
+    // Load user identity if it exists
+    let identity = "";
+    try {
+      identity = await readFileIfExists(path.join(this.config.configDir, "identity.md"));
+    } catch {
+      // No identity file
+    }
+
     let promptContent = `${SYSTEM_PROMPT}\n\n## Current Vault Structure\n\`\`\`\n${vaultStructure}\n\`\`\``;
+    if (identity) {
+      promptContent += `\n\n## About the User\n${identity}`;
+    }
     if (conventions) {
       promptContent += `\n\n## User Conventions\n${conventions}`;
     }
@@ -56,10 +77,19 @@ export class OctopalAgent {
         mode: "append",
         content: promptContent,
       },
-      tools: buildAllVaultTools({
+      skillDirectories: [
+        path.resolve(__dirname, "../../../skills"),                // bundled (para, etc.)
+        path.join(this.vault.root, ".octopal/skills"),            // vault skills
+        path.join(this.config.configDir, "skills"),               // local (~/.octopal/skills/)
+      ],
+      ...(options?.disabledSkills?.length ? { disabledSkills: options.disabledSkills } : {}),
+      ...(options?.sessionId ? { sessionId: options.sessionId } : {}),
+      ...(options?.infiniteSessions ? { infiniteSessions: { enabled: true } } : {}),
+      tools: buildVaultTools({
         vault: this.vault,
         para: this.para,
         tasks: this.tasks,
+        client: this.client,
       }),
     });
 
@@ -88,5 +118,13 @@ export class OctopalAgent {
     } finally {
       await session.destroy();
     }
+  }
+}
+
+async function readFileIfExists(filePath: string): Promise<string> {
+  try {
+    return await fs.readFile(filePath, "utf-8");
+  } catch {
+    return "";
   }
 }

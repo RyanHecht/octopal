@@ -10,7 +10,7 @@ import {
   VaultManager,
   ParaManager,
   TaskManager,
-  buildCopilotTools,
+  buildVaultTools,
   loadConfig,
   saveConfig,
   SETUP_PROMPT,
@@ -132,6 +132,14 @@ async function main() {
     // vault-template not found — skip
   }
 
+  // Create vault skills directory
+  if (!(await vault.exists(".octopal/skills"))) {
+    await vault.writeFile(
+      ".octopal/skills/README.md",
+      "# Vault Skills\n\nDrop skill directories here to extend Octopal.\nEach skill is a folder with a `SKILL.md` file.\nSee https://agentskills.io for the specification.\n",
+    );
+  }
+
   // Create knowledge base structure
   const knowledgeSrcDir = path.join(vaultTemplateDir, "Resources", "Knowledge");
   try {
@@ -168,7 +176,7 @@ async function main() {
   const vaultStructure = await para.getStructure();
 
   const tasks = new TaskManager();
-  const vaultTools = buildCopilotTools({ vault, para, tasks });
+  const vaultTools = buildVaultTools({ vault, para, tasks, client });
 
   const session = await client.createSession({
     model: "claude-sonnet-4",
@@ -177,6 +185,9 @@ async function main() {
       mode: "append",
       content: `${SETUP_PROMPT}\n\n## Current Vault Structure\n\`\`\`\n${vaultStructure}\n\`\`\`\n\nToday's date: ${new Date().toISOString().slice(0, 10)}`,
     },
+    skillDirectories: [
+      path.resolve(import.meta.dirname, "../../..", "skills"),  // bundled (para, etc.)
+    ],
     onUserInputRequest: async (request) => {
       console.log();
       if (request.choices && request.choices.length > 0) {
@@ -200,12 +211,9 @@ async function main() {
         return { answer, wasFreeform: true };
       }
     },
-    tools: [
-      vaultTools.readVaultStructure,
-      vaultTools.writeNote,
-      vaultTools.appendToNote,
-      vaultTools.commitChanges,
-    ],
+    tools: vaultTools.filter((t) =>
+      ["read_vault_structure", "write_note", "append_to_note", "commit_changes"].includes(t.name),
+    ),
   });
 
   // Listen for assistant messages to print them
