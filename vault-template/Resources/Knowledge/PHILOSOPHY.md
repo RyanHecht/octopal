@@ -88,7 +88,7 @@ Over Time
 | Knowledge entries | `Resources/Knowledge/{People,Terms,Organizations}/` | Reference material belongs in PARA Resources |
 | Agent journal | `Resources/Knowledge/Journal/` | Audit trail, searchable, linkable |
 | Triage queue | `Inbox/Triage.md` | Raw items awaiting processing = Inbox |
-| Agent conventions | `.octopal/conventions.md` | Meta-config, not content |
+| Agent conventions | `Meta/conventions.md` | Meta-config, not content |
 
 ## Design Decisions
 

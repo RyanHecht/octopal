@@ -361,7 +361,7 @@ export function buildVaultTools({ vault, para, tasks, client, scheduler, connect
         }
 
         const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-        const filePath = `.octopal/schedules/${slug}.toml`;
+        const filePath = `Meta/schedules/${slug}.toml`;
 
         const def: Record<string, unknown> = { name, prompt };
         if (schedule) def.schedule = schedule;
@@ -389,7 +389,7 @@ export function buildVaultTools({ vault, para, tasks, client, scheduler, connect
           if (task.builtin) return `Cannot cancel builtin task "${task.name}".`;
         }
 
-        const filePath = `.octopal/schedules/${taskId}.toml`;
+        const filePath = `Meta/schedules/${taskId}.toml`;
         try {
           await vault.deleteFile(filePath);
         } catch {

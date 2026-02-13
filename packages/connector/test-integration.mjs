@@ -50,7 +50,7 @@ async function main() {
   await fs.mkdir(vaultDir, { recursive: true });
 
   // Create vault structure
-  for (const dir of ["Projects", "Areas", "Resources", "Archives", "Inbox", ".octopal/schedules"]) {
+  for (const dir of ["Projects", "Areas", "Resources", "Archives", "Inbox", "Meta/schedules"]) {
     await fs.mkdir(path.join(vaultDir, dir), { recursive: true });
   }
 

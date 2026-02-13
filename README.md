@@ -110,7 +110,7 @@ Octopal is extensible via **skills** — directories with a `SKILL.md` that inje
 
 **Three-tier skill resolution:**
 1. **Bundled** (`skills/`) — shipped with octopal (PARA, GitHub conventions)
-2. **Vault** (`<vault>/.octopal/skills/`) — synced via git, editable in Obsidian
+2. **Vault** (`<vault>/Meta/skills/`) — synced via git, editable in Obsidian
 3. **Local** (`~/.octopal/skills/`) — user-installed
 
 ```bash

@@ -65,7 +65,7 @@ export class OctopalAgent {
     // Load user-defined conventions if they exist
     let conventions = "";
     try {
-      conventions = await this.vault.readFile(".octopal/conventions.md");
+      conventions = await this.vault.readFile("Meta/conventions.md");
     } catch {
       // No conventions file — use defaults only
     }
@@ -73,7 +73,7 @@ export class OctopalAgent {
     // Load user identity if it exists
     let identity = "";
     try {
-      identity = await this.vault.readFile(".octopal/identity.md");
+      identity = await this.vault.readFile("Meta/identity.md");
     } catch {
       // No identity file
     }
@@ -108,7 +108,7 @@ export class OctopalAgent {
       },
       skillDirectories: [
         path.resolve(__dirname, "../../../skills"),                // bundled (para, etc.)
-        path.join(this.vault.root, ".octopal/skills"),            // vault skills
+        path.join(this.vault.root, "Meta/skills"),                 // vault skills
         path.join(this.config.configDir, "skills"),               // local (~/.octopal/skills/)
       ],
       ...(options?.disabledSkills?.length ? { disabledSkills: options.disabledSkills } : {}),

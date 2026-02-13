@@ -315,7 +315,7 @@ This is the brain of octopal. It creates a Copilot SDK session with custom tools
 2. `createSession()` creates a new AI session with:
    - A system prompt explaining the PARA method and conventions
    - The current vault structure as context
-   - User-defined conventions from `.octopal/conventions.md` (if present)
+   - User-defined conventions from `Meta/conventions.md` (if present)
    - Custom tools the AI can call (read_vault_structure, write_note, create_task, etc.)
 3. `sendAndWait(session, prompt)` sends a message and waits for the AI to finish
 4. `run(prompt)` is a convenience that creates a session, sends one prompt, and cleans up
@@ -395,10 +395,10 @@ Loads schedules from the vault, runs a periodic tick loop, and executes due task
 **How it works:**
 1. `Scheduler` is created with `{ agent, vault, enabled, tickIntervalSeconds }`
 2. `registerBuiltin(task)` adds code-defined schedules (e.g., vault-sync). These cannot be cancelled via the agent tool.
-3. `start()` loads all `.toml` files from `<vault>/.octopal/schedules/`, then begins a `setTimeout`-based tick loop (default: 60 seconds)
+3. `start()` loads all `.toml` files from `<vault>/Meta/schedules/`, then begins a `setTimeout`-based tick loop (default: 60 seconds)
 4. On each tick, it checks which tasks are due (via `cronMatches`). Recurring tasks don't re-run if already executed this minute. One-off tasks fire when their scheduled time has passed.
 5. Execution creates a one-shot agent session (via `agent.run()`), sends the prompt, and collects the response. Builtins (prompts starting with `__builtin:`) bypass the agent and run directly (e.g., `vault.pull()`).
-6. Results are appended to `.octopal/schedules/history.md` as a markdown table row.
+6. Results are appended to `Meta/schedules/history.md` as a markdown table row.
 7. One-off tasks are deleted from the vault after execution.
 
 **Key methods:**
@@ -407,7 +407,7 @@ Loads schedules from the vault, runs a periodic tick loop, and executes due task
 - `listTasks()` — returns all active schedules
 - `registerBuiltin(task)` — add a code-defined schedule
 
-**Schedule file format** (`.octopal/schedules/*.toml`):
+**Schedule file format** (`Meta/schedules/*.toml`):
 ```toml
 name = "Daily Digest"
 schedule = "0 9 * * MON-FRI"   # cron or interval sugar ("daily", "every 30m")
@@ -555,17 +555,17 @@ enabled = true
 tickIntervalSeconds = 60
 ```
 
-### `.octopal/conventions.md` — User-Defined Conventions
+### `Meta/conventions.md` — User-Defined Conventions
 
 A markdown file inside the vault that lets users customize how the agent organizes content. The agent reads it on every session and appends it to the system prompt.
 
-**Location:** `<vault>/.octopal/conventions.md`
+**Location:** `<vault>/Meta/conventions.md`
 
 **How it works:**
 - `OctopalAgent.createSession()` attempts to read the file from the vault
 - If it exists, the content is appended to the system prompt under a `## User Conventions` heading
 - If it doesn't exist, the agent falls back to its built-in defaults
-- The setup flow copies a default version from `vault-template/.octopal/conventions.md`
+- The setup flow copies a default version from `vault-template/Meta/conventions.md`
 
 **Default sections:**
 - **File Structure** — directory layout conventions (subdirectories with `index.md`, kebab-case names)
@@ -664,7 +664,7 @@ Octopal uses the Copilot SDK's native **skill directories** for extensibility. S
 When `OctopalAgent.createSession()` is called, it passes three `skillDirectories` to the SDK:
 
 1. **Bundled** (`<install>/skills/`) — shipped with octopal. Includes `para` (vault organization) and `github` (workflow conventions).
-2. **Vault** (`<vault>/.octopal/skills/`) — prompt-only skills synced via git, editable in Obsidian.
+2. **Vault** (`<vault>/Meta/skills/`) — prompt-only skills synced via git, editable in Obsidian.
 3. **Local** (`~/.octopal/skills/`) — user-installed skills.
 
 The SDK automatically discovers `SKILL.md` files, parses their frontmatter, and injects their instructions into the session prompt.
@@ -702,7 +702,7 @@ const session = await agent.createSession({
 
 ### User Identity
 
-Place `.octopal/identity.md` in your vault to inject personal context (name, location, role, preferences) into every session. This is read and appended to the system prompt automatically.
+Place `Meta/identity.md` in your vault to inject personal context (name, location, role, preferences) into every session. This is read and appended to the system prompt automatically.
 
 ---
 
@@ -817,7 +817,7 @@ The daemon routes this through the agent session for that connector+channel, jus
 Skills (prompt-only `SKILL.md` files) can target specific connectors by instructing the agent to use `remote_execute`:
 
 ```markdown
-# .octopal/skills/workiq/SKILL.md
+# Meta/skills/workiq/SKILL.md
 ---
 name: workiq
 description: Query work metrics via WorkIQ on the work machine

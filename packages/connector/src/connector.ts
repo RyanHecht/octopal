@@ -25,6 +25,8 @@ export interface RemoteConnectorOptions {
   autoReconnect?: boolean;
   /** Max reconnect delay in ms (default: 30000) */
   maxReconnectDelay?: number;
+  /** Connection timeout in ms — how long to wait for auth+registration (default: 15000) */
+  connectTimeoutMs?: number;
 }
 
 /**
@@ -86,6 +88,25 @@ export class OctopalRemoteConnector {
     return new Promise((resolve, reject) => {
       const ws = new WebSocket(this.options.daemonUrl);
       let connected = false;
+      let settled = false;
+
+      const timeoutMs = this.options.connectTimeoutMs ?? 15_000;
+      const timer = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          ws.removeAllListeners();
+          ws.close();
+          reject(new Error(`Connection timed out after ${timeoutMs}ms`));
+        }
+      }, timeoutMs);
+
+      const settle = (fn: () => void) => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          fn();
+        }
+      };
 
       ws.on("open", () => {
         // Authenticate first, then register on auth.ok
@@ -107,7 +128,7 @@ export class OctopalRemoteConnector {
         }
 
         if (msg.type === "auth.error") {
-          reject(new Error(`Authentication failed: ${msg.error}`));
+          settle(() => reject(new Error(`Authentication failed: ${msg.error}`)));
           return;
         }
 
@@ -115,7 +136,7 @@ export class OctopalRemoteConnector {
           if (!connected) {
             connected = true;
             this.reconnectDelay = 1000;
-            resolve();
+            settle(() => resolve());
           }
         });
       });
@@ -127,14 +148,14 @@ export class OctopalRemoteConnector {
           this.scheduleReconnect();
         }
         if (!connected) {
-          reject(new Error("Connection closed before registration"));
+          settle(() => reject(new Error("Connection closed before registration")));
         }
       });
 
       ws.on("error", (err) => {
         console.error(`[connector:${this.options.name}] WebSocket error:`, err.message);
         if (!connected) {
-          reject(err);
+          settle(() => reject(err));
         }
       });
 
@@ -196,6 +217,9 @@ export class OctopalRemoteConnector {
     if (!autoReconnect || this.stopped) return;
 
     const maxDelay = this.options.maxReconnectDelay ?? 30_000;
+    // Add ±25% jitter to prevent thundering herd
+    const jitter = 1 + (Math.random() - 0.5) * 0.5;
+    const delay = Math.min(this.reconnectDelay * jitter, maxDelay);
 
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
@@ -204,7 +228,7 @@ export class OctopalRemoteConnector {
         this.reconnectDelay = Math.min(this.reconnectDelay * 2, maxDelay);
         this.scheduleReconnect();
       });
-    }, this.reconnectDelay);
+    }, delay);
   }
 }
 

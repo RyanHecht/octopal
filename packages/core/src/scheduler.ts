@@ -15,8 +15,8 @@ import {
   cronMatches,
 } from "./schedule-types.js";
 
-const SCHEDULES_DIR = ".octopal/schedules";
-const HISTORY_FILE = ".octopal/schedules/history.md";
+const SCHEDULES_DIR = "Meta/schedules";
+const HISTORY_FILE = "Meta/schedules/history.md";
 
 export interface SchedulerOptions {
   agent: OctopalAgent;

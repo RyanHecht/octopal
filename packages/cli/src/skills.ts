@@ -42,7 +42,7 @@ export async function listSkills(config: ResolvedConfig): Promise<void> {
     "../../..",
     "skills",
   );
-  const vaultDir = path.join(config.vaultPath, ".octopal/skills");
+  const vaultDir = path.join(config.vaultPath, "Meta/skills");
   const localDir = path.join(config.configDir, "skills");
 
   const [bundled, vault, local] = await Promise.all([

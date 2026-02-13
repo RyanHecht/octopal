@@ -122,20 +122,20 @@ async function main() {
   }
 
   // Copy default conventions file
-  const conventionsSrc = path.join(vaultTemplateDir, ".octopal", "conventions.md");
+  const conventionsSrc = path.join(vaultTemplateDir, "Meta", "conventions.md");
   try {
-    if (!(await vault.exists(".octopal/conventions.md"))) {
+    if (!(await vault.exists("Meta/conventions.md"))) {
       const content = await fs.readFile(conventionsSrc, "utf-8");
-      await vault.writeFile(".octopal/conventions.md", content);
+      await vault.writeFile("Meta/conventions.md", content);
     }
   } catch {
     // vault-template not found — skip
   }
 
   // Create vault skills directory
-  if (!(await vault.exists(".octopal/skills"))) {
+  if (!(await vault.exists("Meta/skills"))) {
     await vault.writeFile(
-      ".octopal/skills/README.md",
+      "Meta/skills/README.md",
       "# Vault Skills\n\nDrop skill directories here to extend Octopal.\nEach skill is a folder with a `SKILL.md` file.\nSee https://agentskills.io for the specification.\n",
     );
   }
