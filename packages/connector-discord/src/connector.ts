@@ -129,23 +129,74 @@ export class DiscordConnector {
 
   /** Handle a message in a configured channel — auto-create a thread */
   private async handleChannelMessage(message: Message, text: string): Promise<void> {
-    // Generate a thread title
-    let threadName = text.slice(0, 50);
-    if (this.titleGenerator) {
-      try {
-        threadName = await this.titleGenerator.generateTitle(text);
-      } catch (err) {
-        console.error("[discord] Failed to generate thread title, using fallback:", err);
+    const channel = message.channel;
+
+    // Show typing while generating title + waiting for agent
+    const typingInterval = setInterval(() => {
+      ("sendTyping" in channel) && (channel as any).sendTyping().catch(() => {});
+    }, 8_000);
+    if ("sendTyping" in channel) await (channel as any).sendTyping().catch(() => {});
+
+    try {
+      // Generate a thread title
+      let threadName = text.slice(0, 50);
+      if (this.titleGenerator) {
+        try {
+          threadName = await this.titleGenerator.generateTitle(text);
+        } catch (err) {
+          console.error("[discord] Failed to generate thread title, using fallback:", err);
+        }
       }
+
+      // Create thread from the message
+      const thread = await message.startThread({
+        name: threadName.slice(0, 100), // Discord limit
+      });
+
+      // Continue typing in the thread while the agent responds
+      clearInterval(typingInterval);
+      const threadTypingInterval = setInterval(() => {
+        thread.sendTyping().catch(() => {});
+      }, 8_000);
+      await thread.sendTyping().catch(() => {});
+
+      try {
+        const sessionId = `discord-th-${thread.id}`;
+        await this.replyInThread(thread, sessionId, text);
+      } finally {
+        clearInterval(threadTypingInterval);
+      }
+    } finally {
+      clearInterval(typingInterval);
     }
+  }
 
-    // Create thread from the message
-    const thread = await message.startThread({
-      name: threadName.slice(0, 100), // Discord limit
-    });
+  /** Send a prompt to the agent and reply in a thread (no typing — caller manages it) */
+  private async replyInThread(
+    channel: { send(content: string): Promise<any> },
+    sessionId: string,
+    text: string,
+  ): Promise<void> {
+    try {
+      const { response, recovered } = await this.sessionStore.sendOrRecover(sessionId, text);
+      const responseText = response?.data?.content ?? "";
 
-    const sessionId = `discord-th-${thread.id}`;
-    await this.replyInChannel(thread, sessionId, text);
+      if (recovered) {
+        console.log(`[discord] Session ${sessionId} was recovered after expiry`);
+        await channel.send("⚡ *Session refreshed — conversation history was reset.*").catch(() => {});
+      }
+
+      if (!responseText) return;
+
+      const chunks = splitMessage(responseText);
+      for (const chunk of chunks) {
+        await channel.send(chunk);
+      }
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      console.error(`[discord] Session ${sessionId} error:`, errMsg);
+      await channel.send("Sorry, something went wrong processing your message.").catch(() => {});
+    }
   }
 
   /** Send a prompt to the agent and reply in the given channel */
