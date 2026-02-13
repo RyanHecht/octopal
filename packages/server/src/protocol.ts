@@ -29,6 +29,10 @@ export interface ConnectorRegisterMessage {
   type: "connector.register";
   name: string;
   channelTypes: string[];
+  /** Capabilities this connector supports (e.g. "shell", "screenshot") */
+  capabilities?: string[];
+  /** Arbitrary metadata about the connector (OS, hostname, etc.) */
+  metadata?: Record<string, unknown>;
 }
 
 export interface ConnectorChannelMessage {
@@ -37,7 +41,17 @@ export interface ConnectorChannelMessage {
   authorId: string;
   authorName: string;
   text: string;
+  /** Classification hint for proactive push (e.g. "transcript", "screenshot") */
+  dataType?: string;
   metadata?: Record<string, unknown>;
+}
+
+/** Response from a connector to a daemon request */
+export interface ConnectorResponseMessage {
+  type: "connector.response";
+  requestId: string;
+  result?: unknown;
+  error?: string;
 }
 
 export type ClientMessage =
@@ -45,7 +59,8 @@ export type ClientMessage =
   | PingMessage
   | ChatSendMessage
   | ConnectorRegisterMessage
-  | ConnectorChannelMessage;
+  | ConnectorChannelMessage
+  | ConnectorResponseMessage;
 
 // ── Daemon → Client ──────────────────────────────────────────────
 
@@ -93,6 +108,15 @@ export interface ConnectorAckMessage {
   name: string;
 }
 
+/** Daemon requests an action from a connector */
+export interface ConnectorRequestMessage {
+  type: "connector.request";
+  requestId: string;
+  capability: string;
+  action: string;
+  params: Record<string, unknown>;
+}
+
 export interface ConnectorReplyMessage {
   type: "connector.reply";
   channelId: string;
@@ -113,6 +137,7 @@ export type DaemonMessage =
   | ChatCompleteMessage
   | ChatErrorMessage
   | ConnectorAckMessage
+  | ConnectorRequestMessage
   | ConnectorReplyMessage
   | ErrorMessage;
 

@@ -20,3 +20,16 @@ export interface NoteMetadata {
   tags?: string[];
 }
 
+/** Minimal interface for connector registry, used by agent tools without depending on server */
+export interface ConnectorRegistryLike {
+  list(): Array<{ name: string; capabilities: string[]; metadata: Record<string, unknown> }>;
+  findByName(name: string): { name: string; capabilities: string[] } | undefined;
+  sendRequest(
+    connectorName: string,
+    capability: string,
+    action: string,
+    params?: Record<string, unknown>,
+    timeoutMs?: number,
+  ): Promise<unknown>;
+}
+

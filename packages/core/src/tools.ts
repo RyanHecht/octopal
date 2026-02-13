@@ -8,6 +8,7 @@ import { type TaskManager, TaskPriority } from "./tasks.js";
 import { runPreprocessor } from "./preprocessor.js";
 import type { Scheduler } from "./scheduler.js";
 import { toCron } from "./schedule-types.js";
+import type { ConnectorRegistryLike } from "./types.js";
 
 export interface ToolDeps {
   vault: VaultManager;
@@ -15,10 +16,11 @@ export interface ToolDeps {
   tasks: TaskManager;
   client: CopilotClient;
   scheduler?: Scheduler;
+  connectors?: ConnectorRegistryLike;
 }
 
 /** Build all vault tools as Copilot SDK Tool objects */
-export function buildVaultTools({ vault, para, tasks, client, scheduler }: ToolDeps) {
+export function buildVaultTools({ vault, para, tasks, client, scheduler, connectors }: ToolDeps) {
   return [
     defineTool("analyze_input", {
       description:
@@ -420,6 +422,65 @@ export function buildVaultTools({ vault, para, tasks, client, scheduler }: ToolD
           const flagStr = flags ? ` (${flags})` : "";
           return `- **${t.name}** [${t.id}] — ${type}${flagStr}`;
         }).join("\n");
+      },
+    }),
+
+    // ── Connector tools ──────────────────────────────────────────────
+
+    defineTool("list_connectors", {
+      description:
+        "List all connected remote devices/connectors and their capabilities. Use this to check what machines are online and what they can do.",
+      parameters: z.object({}),
+      handler: async () => {
+        if (!connectors) {
+          return "Connector registry is not available (server not running).";
+        }
+
+        const list = connectors.list();
+        if (list.length === 0) return "No remote connectors are currently connected.";
+
+        return list.map((c) => {
+          const caps = c.capabilities.length > 0 ? c.capabilities.join(", ") : "none";
+          const meta = Object.keys(c.metadata).length > 0
+            ? ` (${Object.entries(c.metadata).map(([k, v]) => `${k}: ${v}`).join(", ")})`
+            : "";
+          return `- **${c.name}**: ${caps}${meta}`;
+        }).join("\n");
+      },
+    }),
+
+    defineTool("remote_execute", {
+      description:
+        "Execute a shell command on a remote connected machine. The connector must have the 'shell' capability. Use this to run CLI tools, scripts, or capture data from remote devices.",
+      parameters: z.object({
+        connector: z.string().describe("Name of the target connector (e.g. 'work-mac', 'linux-desktop')"),
+        command: z.string().describe("Shell command to execute on the remote machine"),
+        timeoutMs: z.number().optional().describe("Timeout in milliseconds (default: 60000)"),
+      }),
+      handler: async ({ connector: connectorName, command, timeoutMs }: any) => {
+        if (!connectors) {
+          return "Error: Connector registry is not available (server not running).";
+        }
+
+        try {
+          const result = await connectors.sendRequest(
+            connectorName,
+            "shell",
+            "execute",
+            { command },
+            timeoutMs,
+          ) as { stdout?: string; stderr?: string; exitCode?: number };
+
+          const sections: string[] = [];
+          if (result.stdout) sections.push(result.stdout);
+          if (result.stderr) sections.push(`STDERR:\n${result.stderr}`);
+          if (result.exitCode !== undefined && result.exitCode !== 0) {
+            sections.push(`Exit code: ${result.exitCode}`);
+          }
+          return sections.length > 0 ? sections.join("\n") : "(no output)";
+        } catch (err) {
+          return `Error: ${err instanceof Error ? err.message : String(err)}`;
+        }
       },
     }),
   ];

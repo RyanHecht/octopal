@@ -3,21 +3,16 @@ import type { WebSocket } from "ws";
 import { verifyToken, type TokenPayload, type ResolvedConfig, type OctopalAgent } from "@octopal/core";
 import type { ClientMessage } from "./protocol.js";
 import type { SessionStore } from "./sessions.js";
+import type { ConnectorRegistry } from "./connector-registry.js";
 import { isTokenRevoked } from "./routes/auth.js";
-
-interface ConnectorRegistration {
-  name: string;
-  channelTypes: string[];
-  socket: WebSocket;
-}
 
 export function registerWebSocket(
   fastify: FastifyInstance,
   config: ResolvedConfig,
   agent: OctopalAgent,
   sessionStore: SessionStore,
+  connectorRegistry: ConnectorRegistry,
 ) {
-  const connectors = new Map<WebSocket, ConnectorRegistration>();
 
   fastify.get("/ws", { websocket: true }, (socket: WebSocket, request) => {
     let authenticated = false;
@@ -67,16 +62,21 @@ export function registerWebSocket(
           break;
 
         case "connector.register":
-          handleConnectorRegister(socket, connectors, authPayload!, msg.name, msg.channelTypes);
+          handleConnectorRegister(socket, connectorRegistry, authPayload!, msg.name, msg.channelTypes, msg.capabilities, msg.metadata);
           break;
 
         case "connector.message": {
-          const reg = connectors.get(socket);
+          const reg = connectorRegistry.get(socket);
           if (!reg) {
             socket.send(JSON.stringify({ type: "error", error: "Not registered as a connector" }));
             return;
           }
           handleConnectorMessage(socket, sessionStore, reg.name, msg.channelId, msg.text);
+          break;
+        }
+
+        case "connector.response": {
+          connectorRegistry.handleResponse(msg.requestId, msg.result, msg.error);
           break;
         }
 
@@ -86,7 +86,7 @@ export function registerWebSocket(
     });
 
     socket.on("close", () => {
-      connectors.delete(socket);
+      connectorRegistry.unregister(socket);
     });
   });
 }
@@ -155,10 +155,12 @@ async function handleChatSend(
 
 function handleConnectorRegister(
   socket: WebSocket,
-  connectors: Map<WebSocket, ConnectorRegistration>,
+  registry: ConnectorRegistry,
   auth: TokenPayload,
   name: string,
   channelTypes: string[],
+  capabilities?: string[],
+  metadata?: Record<string, unknown>,
 ) {
   if (!auth.scopes.includes("connector")) {
     socket.send(JSON.stringify({ type: "error", error: "Missing connector scope" }));
@@ -170,7 +172,19 @@ function handleConnectorRegister(
     return;
   }
 
-  connectors.set(socket, { name: name.trim(), channelTypes: channelTypes ?? [], socket });
+  const registered = registry.register(
+    socket,
+    name.trim(),
+    capabilities ?? [],
+    metadata ?? {},
+  );
+
+  if (!registered) {
+    socket.send(JSON.stringify({ type: "error", error: `Connector name "${name.trim()}" is already registered` }));
+    return;
+  }
+
+  console.log(`[ws] Connector "${name.trim()}" registered with capabilities: [${(capabilities ?? []).join(", ")}]`);
   socket.send(JSON.stringify({ type: "connector.ack", name: name.trim() }));
 }
 

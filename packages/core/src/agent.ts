@@ -10,6 +10,7 @@ import { SessionLogger } from "./session-logger.js";
 import { buildVaultTools } from "./tools.js";
 import { SYSTEM_PROMPT } from "./prompts.js";
 import type { OctopalConfig } from "./types.js";
+import type { ConnectorRegistryLike } from "./types.js";
 import type { Scheduler } from "./scheduler.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -20,6 +21,7 @@ export class OctopalAgent {
   readonly para: ParaManager;
   private tasks: TaskManager;
   private scheduler?: Scheduler;
+  private connectors?: ConnectorRegistryLike;
 
   constructor(private config: OctopalConfig) {
     this.client = new CopilotClient({
@@ -33,6 +35,11 @@ export class OctopalAgent {
   /** Attach the scheduler so it's available to agent tools */
   setScheduler(scheduler: Scheduler): void {
     this.scheduler = scheduler;
+  }
+
+  /** Attach the connector registry so tools and session context can use it */
+  setConnectorRegistry(registry: ConnectorRegistryLike): void {
+    this.connectors = registry;
   }
 
   async init(): Promise<void> {
@@ -79,6 +86,18 @@ export class OctopalAgent {
       promptContent += `\n\n## User Conventions\n${conventions}`;
     }
 
+    // Inject connected devices context
+    if (this.connectors) {
+      const devices = this.connectors.list();
+      if (devices.length > 0) {
+        const lines = devices.map((d) => {
+          const caps = d.capabilities.length > 0 ? d.capabilities.join(", ") : "none";
+          return `- **${d.name}**: ${caps}`;
+        });
+        promptContent += `\n\n## Connected Devices\n${lines.join("\n")}`;
+      }
+    }
+
     const session = await this.client.createSession({
       model: "claude-sonnet-4",
       streaming: true,
@@ -102,6 +121,7 @@ export class OctopalAgent {
           tasks: this.tasks,
           client: this.client,
           scheduler: this.scheduler,
+          connectors: this.connectors,
         }),
         ...(options?.extraTools ?? []),
       ],

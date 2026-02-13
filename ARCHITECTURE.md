@@ -11,11 +11,12 @@ This document explains how octopal works, the patterns it uses, and how to exten
 3. [How the Build Works](#how-the-build-works)
 4. [Module-by-Module Guide](#module-by-module-guide)
 5. [The Copilot SDK](#the-copilot-sdk)
-6. [How to Add a New Agent Tool](#how-to-add-a-new-agent-tool)
-7. [How to Build a New Connector](#how-to-build-a-new-connector)
-8. [Discord Connector](#discord-connector)
-9. [Common Tasks](#common-tasks)
-10. [Troubleshooting](#troubleshooting)
+6. [Skills System](#skills-system)
+7. [How to Add a New Agent Tool](#how-to-add-a-new-agent-tool)
+8. [How to Build a New Connector](#how-to-build-a-new-connector)
+9. [Discord Connector](#discord-connector)
+10. [Common Tasks](#common-tasks)
+11. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -134,12 +135,12 @@ octopal/
 │   │       ├── agent.ts          # Copilot SDK session + tool/skill wiring
 │   │       ├── auth.ts           # Password hashing (scrypt), JWT minting/verification
 │   │       ├── connector.ts      # Channel connector interface (Discord, web, etc.)
-│   │       ├── tools.ts          # Vault tools (defineTool-based, SDK-native)
+│   │       ├── tools.ts          # Vault + connector tools (defineTool-based, SDK-native)
 │   │       ├── prompts.ts        # Core identity prompt (single source of truth)
 │   │       ├── vault.ts          # Git + file operations on the vault
 │   │       ├── para.ts           # PARA directory structure management
 │   │       ├── tasks.ts          # Obsidian Tasks format parser/formatter
-│   │       └── types.ts          # Shared TypeScript types
+│   │       └── types.ts          # Shared TypeScript types (incl. ConnectorRegistryLike)
 │   ├── cli/                      # @octopal/cli — command-line entry point
 │   │   ├── package.json
 │   │   ├── tsconfig.json
@@ -148,19 +149,29 @@ octopal/
 │   │       ├── setup.ts          # Interactive onboarding wizard
 │   │       ├── skills.ts         # `octopal skills list/create` commands
 │   │       └── client.ts         # Daemon WebSocket client (dual-mode CLI)
-│   └── server/                   # @octopal/server — daemon (HTTP + WebSocket)
-│       ├── package.json
-│       ├── tsconfig.json
+│   ├── server/                   # @octopal/server — daemon (HTTP + WebSocket)
+│   │   ├── package.json
+│   │   ├── tsconfig.json
+│   │   └── src/
+│   │       ├── index.ts          # Entry point: parse args, start server
+│   │       ├── server.ts         # Fastify app setup, OctopalAgent init
+│   │       ├── protocol.ts       # WebSocket message type definitions
+│   │       ├── connector-registry.ts # Tracks remote connectors + routes requests
+│   │       ├── sessions.ts       # SessionStore: maps channel IDs → SDK sessions
+│   │       ├── ws.ts             # WebSocket handler (auth, chat, connectors)
+│   │       └── routes/
+│   │           ├── auth.ts       # POST /auth/token, GET /auth/tokens, DELETE /auth/token/:id
+│   │           ├── chat.ts       # POST /chat (one-shot request/response)
+│   │           └── vault.ts      # GET /vault/structure, GET /vault/note/*, POST /vault/search
+│   ├── connector-discord/        # @octopal/connector-discord — in-process Discord bot
+│   │   └── src/
+│   │       ├── connector.ts      # DiscordConnector class (uses SessionStore directly)
+│   │       ├── messages.ts       # Message splitting utility
+│   │       └── tools.ts          # Discord-specific agent tools
+│   └── connector/                # @octopal/connector — remote connector runtime
 │       └── src/
-│           ├── index.ts          # Entry point: parse args, start server
-│           ├── server.ts         # Fastify app setup, OctopalAgent init
-│           ├── protocol.ts       # WebSocket message type definitions
-│           ├── sessions.ts       # SessionStore: maps channel IDs → SDK sessions
-│           ├── ws.ts             # WebSocket handler (auth, chat, connectors)
-│           └── routes/
-│               ├── auth.ts       # POST /auth/token, GET /auth/tokens, DELETE /auth/token/:id
-│               ├── chat.ts       # POST /chat (one-shot request/response)
-│               └── vault.ts      # GET /vault/structure, GET /vault/note/*, POST /vault/search
+│           ├── index.ts          # Entry point + re-exports
+│           └── connector.ts      # OctopalRemoteConnector class + shellHandler
 └── vault-template/               # Starter vault (copy this for new vaults)
 ```
 
@@ -323,7 +334,7 @@ PARA-specific details (directory structure, task format, etc.) live in `skills/p
 
 Vault tools built with the Copilot SDK's `defineTool()`. Key exports:
 - `buildVaultTools(deps)` — returns all vault tools as a `Tool[]` array
-- `ToolDeps` — interface: `{ vault, para, tasks, client, scheduler? }`
+- `ToolDeps` — interface: `{ vault, para, tasks, client, scheduler?, connectors? }`
 
 Notable tools:
 - `analyze_input` — runs the two-phase preprocessor (deterministic + semantic matching) against the knowledge base. The PARA skill instructs the agent to call this before processing raw input.
@@ -333,6 +344,8 @@ Notable tools:
 - `schedule_task` — create a recurring or one-off scheduled task (persisted to vault as TOML)
 - `cancel_scheduled_task` — remove a scheduled task by ID (builtins cannot be cancelled)
 - `list_scheduled_tasks` — list all active scheduled tasks
+- `list_connectors` — list connected remote devices and their capabilities
+- `remote_execute` — execute a shell command on a remote connected machine
 
 ### `auth.ts` — Authentication
 
@@ -465,6 +478,10 @@ Connectors are **WebSocket clients to the daemon**. They authenticate with a tok
 
 Also defines `InboundMessage` and `OutboundMessage` types for channel-agnostic message passing.
 
+### `types.ts` — Shared Types
+
+Includes `ConnectorRegistryLike` — a minimal interface used by `tools.ts` to interact with the `ConnectorRegistry` without depending on the server package. This enables `list_connectors` and `remote_execute` tools to route requests to remote connectors.
+
 ### `server/` — Daemon (Central Agent Server)
 
 The Octopal daemon — a Fastify server that owns the `OctopalAgent` instance and routes all interactions through it. All clients (CLI, connectors) connect via WebSocket.
@@ -472,6 +489,7 @@ The Octopal daemon — a Fastify server that owns the `OctopalAgent` instance an
 **Architecture:**
 - Single `OctopalAgent` instance, initialized at startup
 - `Scheduler` runs alongside the agent — loads schedules from vault, ticks every 60s, executes due tasks as one-shot agent sessions
+- `ConnectorRegistry` tracks connected remote connectors, their capabilities, and routes request/response messages
 - `SessionStore` maps deterministic IDs (`{connector}:{channelId}`) to persistent SDK sessions
 - Sessions use `infiniteSessions` for automatic context compaction
 - Auth: admin password (scrypt hash) → mints scoped JWT bearer tokens for clients
@@ -497,8 +515,9 @@ Auth via query param (`?token=...`) or first `{ type: "auth", token }` message.
 | Type | Scope | Description |
 |------|-------|-------------|
 | `chat.send` | `chat` | Send a message (streaming response via `chat.delta` → `chat.complete`) |
-| `connector.register` | `connector` | Register as a channel connector |
-| `connector.message` | `connector` | Forward a channel message (response via `connector.reply`) |
+| `connector.register` | `connector` | Register as a connector (includes name, capabilities, metadata) |
+| `connector.message` | `connector` | Forward a channel message or push data proactively (optional `dataType`) |
+| `connector.response` | `connector` | Response to a `connector.request` (includes `requestId`, `result`/`error`) |
 | `ping` | — | Heartbeat |
 
 *Daemon → Client:*
@@ -509,6 +528,7 @@ Auth via query param (`?token=...`) or first `{ type: "auth", token }` message.
 | `chat.complete` | Response finished |
 | `chat.error` | Error during chat |
 | `connector.ack` | Registration confirmed |
+| `connector.request` | Request an action from a connector (`requestId`, `capability`, `action`, `params`) |
 | `connector.reply` | Reply to send back to channel |
 | `pong` | Heartbeat response |
 
@@ -724,119 +744,102 @@ The tool is now automatically available in the standalone CLI and any connector.
 
 ## How to Build a New Connector
 
-A "connector" bridges an external messaging channel (Discord, Telegram, web) to the Octopal daemon via WebSocket. Connectors are lightweight — they translate channel events to the daemon protocol and handle responses.
+There are two types of connectors: **remote connectors** (run on separate machines, connect via WebSocket) and **in-process connectors** (run inside the daemon, like Discord). Most new connectors should be remote.
 
-### Architecture
+### Remote Connectors (recommended)
+
+Remote connectors use the `@octopal/connector` package — a lightweight runtime that connects to the daemon, registers capabilities, and handles requests.
+
+#### Architecture
 
 ```
-Channel (Discord, etc.)
+Remote Machine (e.g. work Mac)
     │
     ▼
-Connector Process
-    │ WebSocket
+OctopalRemoteConnector          ← WS client with auto-reconnect
+    │ WebSocket (authenticated)
     ▼
-Octopal Daemon (octopal serve)
+Octopal Daemon (home server)
     │
     ▼
-OctopalAgent → SDK → LLM
+ConnectorRegistry → Agent Tools → OctopalAgent → SDK → LLM
 ```
 
-### Step-by-step
-
-1. **Create the package directory:**
-```bash
-mkdir -p packages/connector-discord/src
-```
-
-2. **Create `packages/connector-discord/package.json`:**
-```json
-{
-  "name": "@octopal/connector-discord",
-  "version": "0.1.0",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "build": "tsc",
-    "clean": "rm -rf dist",
-    "start": "node dist/index.js"
-  },
-  "dependencies": {
-    "@octopal/core": "*",
-    "discord.js": "^14.0.0"
-  }
-}
-```
-
-3. **Create `packages/connector-discord/tsconfig.json`:**
-```json
-{
-  "extends": "../../tsconfig.base.json",
-  "compilerOptions": {
-    "outDir": "./dist",
-    "rootDir": "./src"
-  },
-  "include": ["src"],
-  "references": [
-    { "path": "../core" }
-  ]
-}
-```
-
-4. **Add it to the root `tsconfig.json` references.**
-
-5. **Implement the connector** — connect to the daemon, register, forward messages:
+#### Quick start
 
 ```typescript
-import type { OctopalConnector } from "@octopal/core";
+import { OctopalRemoteConnector, shellHandler } from "@octopal/connector";
 
-class DiscordConnector implements OctopalConnector {
-  readonly name = "discord";
-  private ws: WebSocket | null = null;
+const connector = new OctopalRemoteConnector({
+  name: "work-mac",                                    // unique name
+  daemonUrl: "wss://octopal.example.com/ws",           // daemon URL
+  token: "eyJ...",                                     // connector-scoped JWT
+  capabilities: ["shell"],                             // what this connector can do
+  metadata: { os: "darwin", hostname: "Ryans-MBP" },   // optional metadata
+});
 
-  async connect(daemonUrl: string, token: string): Promise<void> {
-    // Connect to daemon WebSocket
-    this.ws = new WebSocket(`${daemonUrl}?token=${encodeURIComponent(token)}`);
+// Register the built-in shell handler
+connector.onRequest("shell", shellHandler());
 
-    // Wait for auth.ok, then register
-    this.ws.send(JSON.stringify({
-      type: "connector.register",
-      name: this.name,
-      channelTypes: ["text", "dm"],
-    }));
-
-    // Listen for Discord messages and forward them
-    discordClient.on("messageCreate", (msg) => {
-      this.ws?.send(JSON.stringify({
-        type: "connector.message",
-        channelId: msg.channel.id,
-        authorId: msg.author.id,
-        authorName: msg.author.username,
-        text: msg.content,
-      }));
-    });
-
-    // Handle daemon replies — send back to Discord
-    this.ws.onmessage = (event) => {
-      const data = JSON.parse(String(event.data));
-      if (data.type === "connector.reply") {
-        discordClient.channels.fetch(data.channelId)
-          .then(ch => ch.send(data.text));
-      }
-    };
+// Or register a custom capability handler
+connector.onRequest("clipboard", async (action, params) => {
+  if (action === "read") {
+    const { execSync } = await import("node:child_process");
+    return { text: execSync("pbpaste").toString() };
   }
+  throw new Error(`Unknown clipboard action: ${action}`);
+});
 
-  async disconnect(): Promise<void> {
-    this.ws?.close();
-  }
-}
+await connector.connect();
+// Connector is now online. The agent can call remote_execute("work-mac", "...").
 ```
 
-### Key points
+#### Proactive push
 
-- **Deterministic session IDs:** The daemon maps `{connectorName}:{channelId}` to a persistent session. Same Discord channel = same conversation, with automatic context compaction.
-- **Auth scope:** Connectors need a token with the `connector` scope. Create one with `POST /auth/token`.
-- **Streaming:** During a response, the daemon sends `chat.delta` events. Connectors can use these for typing indicators or chunked message delivery.
-- **One agent, many channels:** The daemon runs a single `OctopalAgent` instance. Each channel gets its own session but shares the same skills, identity, and vault.
+Connectors can push data to the daemon without being asked (e.g. meeting transcripts, periodic screenshots):
+
+```typescript
+connector.send("transcript-channel", "Meeting transcript:\n...", "transcript");
+```
+
+The daemon routes this through the agent session for that connector+channel, just like a regular `connector.message`.
+
+#### Key points
+
+- **Auto-reconnect:** The connector automatically reconnects with exponential backoff if the daemon disconnects.
+- **Capabilities are freeform strings.** Register whatever makes sense (e.g. `"shell"`, `"clipboard"`, `"slack"`). The agent's `remote_execute` tool requires the `"shell"` capability; custom capabilities can be used by skills via direct instructions.
+- **Auth:** Connectors need a token with the `connector` scope. Create one with `POST /auth/token`.
+- **Naming:** Connector names must be unique. The daemon rejects duplicate registrations.
+- **Session context:** Connected devices and their capabilities are injected into the agent's system prompt, so skills can reference them.
+
+#### Skills + Connectors
+
+Skills (prompt-only `SKILL.md` files) can target specific connectors by instructing the agent to use `remote_execute`:
+
+```markdown
+# .octopal/skills/workiq/SKILL.md
+---
+name: workiq
+description: Query work metrics via WorkIQ on the work machine
+---
+
+When the user asks about work metrics or sprint data:
+1. Use `remote_execute` with connector "work-mac" to run:
+   `copilot -p "use workiq: <query>"`
+2. Parse and present the results.
+
+If "work-mac" is not connected, tell the user.
+```
+
+### In-process Connectors
+
+For channels that need tight integration with the daemon (like Discord, which uses the `SessionStore` directly), create a package in `packages/connector-<name>/` that imports from `@octopal/core` and is started by the daemon. See the [Discord Connector](#discord-connector) section for a working example.
+
+### Adding a new package (either type)
+
+1. Create `packages/connector-<name>/package.json` and `tsconfig.json` (extend `../../tsconfig.base.json`)
+2. Add `{ "path": "packages/connector-<name>" }` to root `tsconfig.json` references
+3. Run `npm install && npm run build`
 
 ---
 

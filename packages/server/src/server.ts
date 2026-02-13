@@ -10,6 +10,7 @@ import { chatRoutes } from "./routes/chat.js";
 import { vaultRoutes } from "./routes/vault.js";
 import { registerWebSocket } from "./ws.js";
 import { SessionStore } from "./sessions.js";
+import { ConnectorRegistry } from "./connector-registry.js";
 
 export interface ServerOptions {
   config: ResolvedConfig;
@@ -50,10 +51,12 @@ export async function createServer({ config, host, port }: ServerOptions) {
     prompt: "__builtin:vault-sync",
   });
 
-  // Make scheduler available to agent sessions
-  agent.setScheduler(scheduler);
-
   const sessionStore = new SessionStore(agent);
+  const connectorRegistry = new ConnectorRegistry();
+
+  // Make scheduler and connector registry available to agent sessions
+  agent.setScheduler(scheduler);
+  agent.setConnectorRegistry(connectorRegistry);
 
   // Register plugins
   await fastify.register(websocket);
@@ -71,7 +74,7 @@ export async function createServer({ config, host, port }: ServerOptions) {
   await fastify.register(vaultRoutes(config, agent.vault, agent.para), { prefix: "/vault" });
 
   // Register WebSocket handler
-  registerWebSocket(fastify, config, agent, sessionStore);
+  registerWebSocket(fastify, config, agent, sessionStore, connectorRegistry);
 
   // Start Discord connector if configured
   if (config.discord?.botToken) {

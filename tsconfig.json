@@ -19,7 +19,8 @@
     { "path": "packages/core" },
     { "path": "packages/cli" },
     { "path": "packages/server" },
-    { "path": "packages/connector-discord" }
+    { "path": "packages/connector-discord" },
+    { "path": "packages/connector" }
   ],
   "files": []
 }
