@@ -18,14 +18,6 @@ export function registerWebSocket(
     let authenticated = false;
     let authPayload: TokenPayload | null = null;
 
-    // Try to authenticate from query string
-    const url = new URL(request.url!, `http://${request.headers.host}`);
-    const queryToken = url.searchParams.get("token");
-    if (queryToken) {
-      authPayload = tryAuth(queryToken, config);
-      authenticated = authPayload !== null;
-    }
-
     socket.on("message", (data: Buffer | string) => {
       let msg: ClientMessage;
       try {

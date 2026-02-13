@@ -1,4 +1,6 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
 import {
   verifyPassword,
   mintToken,
@@ -21,10 +23,65 @@ interface TokenRecord {
 const issuedTokens = new Map<string, TokenRecord>();
 const revokedTokens = new Set<string>();
 
+/** Path to the persisted revocation list */
+function revocationFilePath(config: ResolvedConfig): string {
+  return path.join(config.configDir, "revoked-tokens.json");
+}
+
+/** Load revoked tokens from disk on startup */
+export async function loadRevokedTokens(config: ResolvedConfig): Promise<void> {
+  try {
+    const data = await fs.readFile(revocationFilePath(config), "utf-8");
+    const jtis = JSON.parse(data) as string[];
+    for (const jti of jtis) revokedTokens.add(jti);
+  } catch {
+    // No file or parse error — start with empty set
+  }
+}
+
+/** Persist revoked tokens to disk */
+async function persistRevokedTokens(config: ResolvedConfig): Promise<void> {
+  await fs.mkdir(config.configDir, { recursive: true });
+  await fs.writeFile(
+    revocationFilePath(config),
+    JSON.stringify([...revokedTokens]),
+    { encoding: "utf-8", mode: 0o600 },
+  );
+}
+
+/** Simple per-IP rate limiter for auth endpoints */
+const authAttempts = new Map<string, { count: number; resetAt: number }>();
+const AUTH_RATE_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+const AUTH_RATE_MAX = 10; // max attempts per window
+
+function checkAuthRateLimit(ip: string): boolean {
+  const now = Date.now();
+
+  // Periodic cleanup: evict expired entries when map grows large
+  if (authAttempts.size > 10_000) {
+    for (const [key, entry] of authAttempts) {
+      if (now > entry.resetAt) authAttempts.delete(key);
+    }
+  }
+
+  const entry = authAttempts.get(ip);
+  if (!entry || now > entry.resetAt) {
+    authAttempts.set(ip, { count: 1, resetAt: now + AUTH_RATE_WINDOW_MS });
+    return true;
+  }
+  entry.count++;
+  return entry.count <= AUTH_RATE_MAX;
+}
+
 export function authRoutes(config: ResolvedConfig) {
   return async function (fastify: FastifyInstance) {
     // POST /auth/token — mint a new bearer token
     fastify.post("/token", async (request: FastifyRequest, reply: FastifyReply) => {
+      const clientIp = request.ip;
+      if (!checkAuthRateLimit(clientIp)) {
+        return reply.status(429).send({ error: "Too many authentication attempts. Try again later." });
+      }
+
       const { password, label, scopes } = request.body as {
         password?: string;
         label?: string;
@@ -92,6 +149,7 @@ export function authRoutes(config: ResolvedConfig) {
         return reply.status(404).send({ error: "Token not found" });
       }
       revokedTokens.add(id);
+      await persistRevokedTokens(config);
       return { revoked: true, jti: id };
     });
   };

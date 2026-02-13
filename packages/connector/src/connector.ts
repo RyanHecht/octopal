@@ -1,5 +1,8 @@
 import WebSocket from "ws";
 import { execFile } from "node:child_process";
+import { appendFile, mkdir } from "node:fs/promises";
+import { join, dirname } from "node:path";
+import { homedir } from "node:os";
 
 /** Handler for a connector capability request */
 export type CapabilityHandler = (
@@ -81,23 +84,33 @@ export class OctopalRemoteConnector {
 
   private doConnect(): Promise<void> {
     return new Promise((resolve, reject) => {
-      const url = `${this.options.daemonUrl}?token=${encodeURIComponent(this.options.token)}`;
-      const ws = new WebSocket(url);
+      const ws = new WebSocket(this.options.daemonUrl);
       let connected = false;
 
       ws.on("open", () => {
-        // Register with the daemon
-        ws.send(JSON.stringify({
-          type: "connector.register",
-          name: this.options.name,
-          channelTypes: [],
-          capabilities: this.options.capabilities,
-          metadata: this.options.metadata ?? {},
-        }));
+        // Authenticate first, then register on auth.ok
+        ws.send(JSON.stringify({ type: "auth", token: this.options.token }));
       });
 
       ws.on("message", (data: Buffer | string) => {
         const msg = JSON.parse(typeof data === "string" ? data : data.toString());
+
+        // Wait for auth.ok before registering
+        if (msg.type === "auth.ok" && !connected) {
+          ws.send(JSON.stringify({
+            type: "connector.register",
+            name: this.options.name,
+            channelTypes: [],
+            capabilities: this.options.capabilities,
+            metadata: this.options.metadata ?? {},
+          }));
+        }
+
+        if (msg.type === "auth.error") {
+          reject(new Error(`Authentication failed: ${msg.error}`));
+          return;
+        }
+
         this.handleMessage(ws, msg, () => {
           if (!connected) {
             connected = true;
@@ -198,14 +211,34 @@ export class OctopalRemoteConnector {
 /**
  * Built-in shell capability handler.
  * Executes commands via the system shell and returns stdout/stderr/exitCode.
+ *
+ * ⚠️  SECURITY: This gives the AI assistant full shell access on this machine.
+ * All commands are logged to ~/.octopal/shell-audit.log for review.
+ * Only deploy connectors with the "shell" capability on machines you trust
+ * the AI to control.
  */
 export function shellHandler(options?: {
   /** Shell to use (default: /bin/sh on unix, cmd.exe on windows) */
   shell?: string;
   /** Default timeout in ms (default: 60000) */
   timeoutMs?: number;
+  /** Path to audit log file (default: ~/.octopal/shell-audit.log) */
+  auditLogPath?: string;
 }): CapabilityHandler {
   const defaultTimeout = options?.timeoutMs ?? 60_000;
+  const logPath = options?.auditLogPath
+    ?? join(process.env.OCTOPAL_HOME ?? join(homedir(), ".octopal"), "shell-audit.log");
+
+  async function auditLog(command: string, result: { stdout: string; stderr: string; exitCode: number }) {
+    const timestamp = new Date().toISOString();
+    const entry = `[${timestamp}] command=${JSON.stringify(command)} exitCode=${result.exitCode} stdout=${result.stdout.length}B stderr=${result.stderr.length}B\n`;
+    try {
+      await mkdir(dirname(logPath), { recursive: true });
+      await appendFile(logPath, entry, { mode: 0o600 });
+    } catch {
+      // Best-effort logging — don't fail the command
+    }
+  }
 
   return async (action, params) => {
     if (action !== "execute") {
@@ -222,11 +255,12 @@ export function shellHandler(options?: {
     return new Promise<{ stdout: string; stderr: string; exitCode: number }>((resolve) => {
       execFile(shell, [shellFlag, command], { timeout }, (err, stdout, stderr) => {
         const exitCode = err && "code" in err ? (err as any).code ?? 1 : err ? 1 : 0;
-        resolve({
+        const result = {
           stdout: stdout.toString(),
           stderr: stderr.toString(),
           exitCode: typeof exitCode === "number" ? exitCode : 1,
-        });
+        };
+        auditLog(command, result).then(() => resolve(result));
       });
     });
   };

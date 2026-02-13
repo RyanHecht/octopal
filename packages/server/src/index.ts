@@ -26,12 +26,36 @@ Options:
 
   // Handle --set-password
   if (args.includes("--set-password")) {
-    const { createInterface } = await import("node:readline");
-    const rl = createInterface({ input: process.stdin, output: process.stdout });
-    const ask = (q: string): Promise<string> =>
-      new Promise((resolve) => rl.question(q, resolve));
+    // Read password without echoing to terminal
+    const readSecret = (prompt: string): Promise<string> => {
+      return new Promise((resolve) => {
+        process.stdout.write(prompt);
+        const stdin = process.stdin;
+        const wasRaw = stdin.isRaw;
+        stdin.setRawMode?.(true);
+        stdin.resume();
+        stdin.setEncoding("utf-8");
+        let input = "";
+        const onData = (ch: string) => {
+          if (ch === "\n" || ch === "\r" || ch === "\u0004") {
+            stdin.setRawMode?.(wasRaw ?? false);
+            stdin.pause();
+            stdin.removeListener("data", onData);
+            process.stdout.write("\n");
+            resolve(input);
+          } else if (ch === "\u0003") {
+            process.exit(1);
+          } else if (ch === "\u007f" || ch === "\b") {
+            input = input.slice(0, -1);
+          } else {
+            input += ch;
+          }
+        };
+        stdin.on("data", onData);
+      });
+    };
 
-    const password = await ask("Enter new admin password: ");
+    const password = await readSecret("Enter new admin password: ");
     if (!password.trim()) {
       console.error("Password cannot be empty.");
       process.exit(1);
@@ -40,7 +64,6 @@ Options:
     const hash = await hashPassword(password.trim());
     await saveConfig({ server: { passwordHash: hash } });
     console.log("✅ Admin password saved.");
-    rl.close();
     process.exit(0);
   }
 

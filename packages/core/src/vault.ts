@@ -15,6 +15,16 @@ export class VaultManager {
     return this.config.localPath;
   }
 
+  /** Resolve a relative path and verify it stays within the vault root */
+  private resolveSafe(relativePath: string): string {
+    const resolved = path.resolve(this.config.localPath, relativePath);
+    const root = path.resolve(this.config.localPath);
+    if (!resolved.startsWith(root + path.sep) && resolved !== root) {
+      throw new Error(`Path traversal denied: ${relativePath}`);
+    }
+    return resolved;
+  }
+
   /** Acquire a mutex for vault write operations */
   private async withWriteLock<T>(fn: () => Promise<T>): Promise<T> {
     let release!: () => void;
@@ -79,18 +89,18 @@ export class VaultManager {
   }
 
   async readFile(relativePath: string): Promise<string> {
-    return fs.readFile(path.join(this.config.localPath, relativePath), "utf-8");
+    return fs.readFile(this.resolveSafe(relativePath), "utf-8");
   }
 
   async writeFile(relativePath: string, content: string): Promise<void> {
-    const fullPath = path.join(this.config.localPath, relativePath);
+    const fullPath = this.resolveSafe(relativePath);
     await fs.mkdir(path.dirname(fullPath), { recursive: true });
     await fs.writeFile(fullPath, content, "utf-8");
   }
 
   async exists(relativePath: string): Promise<boolean> {
     try {
-      await fs.access(path.join(this.config.localPath, relativePath));
+      await fs.access(this.resolveSafe(relativePath));
       return true;
     } catch {
       return false;
@@ -98,7 +108,7 @@ export class VaultManager {
   }
 
   async listDir(relativePath: string): Promise<string[]> {
-    const fullPath = path.join(this.config.localPath, relativePath);
+    const fullPath = this.resolveSafe(relativePath);
     try {
       const entries = await fs.readdir(fullPath, { withFileTypes: true });
       return entries
@@ -117,7 +127,7 @@ export class VaultManager {
   }
 
   async appendToFile(relativePath: string, content: string): Promise<void> {
-    const fullPath = path.join(this.config.localPath, relativePath);
+    const fullPath = this.resolveSafe(relativePath);
     await fs.mkdir(path.dirname(fullPath), { recursive: true });
     try {
       const existing = await fs.readFile(fullPath, "utf-8");
@@ -128,12 +138,12 @@ export class VaultManager {
   }
 
   async deleteFile(relativePath: string): Promise<void> {
-    await fs.unlink(path.join(this.config.localPath, relativePath));
+    await fs.unlink(this.resolveSafe(relativePath));
   }
 
   async moveFile(from: string, to: string): Promise<void> {
-    const fullFrom = path.join(this.config.localPath, from);
-    const fullTo = path.join(this.config.localPath, to);
+    const fullFrom = this.resolveSafe(from);
+    const fullTo = this.resolveSafe(to);
     await fs.mkdir(path.dirname(fullTo), { recursive: true });
     await fs.rename(fullFrom, fullTo);
   }

@@ -1,8 +1,8 @@
 import * as crypto from "node:crypto";
 
-const SALT_ROUNDS = 10;
 const TOKEN_ALGORITHM = "HS256";
-const DEFAULT_TOKEN_EXPIRY = 365 * 24 * 60 * 60; // 1 year in seconds
+const DEFAULT_TOKEN_EXPIRY = 30 * 24 * 60 * 60; // 30 days in seconds
+const SCRYPT_OPTIONS = { N: 16384, r: 8, p: 1 };
 
 export interface TokenPayload {
   /** Token ID */
@@ -104,7 +104,7 @@ function verifyJwt(token: string, secret: string): TokenPayload {
 
 function scryptAsync(password: string, salt: string, keylen: number): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    crypto.scrypt(password, salt, keylen, (err, derivedKey) => {
+    crypto.scrypt(password, salt, keylen, SCRYPT_OPTIONS, (err, derivedKey) => {
       if (err) reject(err);
       else resolve(derivedKey);
     });

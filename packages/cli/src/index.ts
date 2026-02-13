@@ -67,7 +67,7 @@ async function main() {
     }
 
     await fs.mkdir(config.configDir, { recursive: true });
-    await fs.writeFile(configPath, CONFIG_TEMPLATE, "utf-8");
+    await fs.writeFile(configPath, CONFIG_TEMPLATE, { encoding: "utf-8", mode: 0o600 });
     console.log(`Config written to ${configPath}`);
     return;
   }

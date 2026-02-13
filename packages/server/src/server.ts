@@ -5,7 +5,7 @@ import {
   Scheduler,
   type ResolvedConfig,
 } from "@octopal/core";
-import { authRoutes } from "./routes/auth.js";
+import { authRoutes, loadRevokedTokens } from "./routes/auth.js";
 import { chatRoutes } from "./routes/chat.js";
 import { vaultRoutes } from "./routes/vault.js";
 import { registerWebSocket } from "./ws.js";
@@ -23,6 +23,7 @@ export async function createServer({ config, host, port }: ServerOptions) {
     logger: {
       level: "info",
     },
+    bodyLimit: 1_048_576, // 1 MB max request body
   });
 
   // Initialize the agent — single instance for all sessions
@@ -58,14 +59,36 @@ export async function createServer({ config, host, port }: ServerOptions) {
   agent.setScheduler(scheduler);
   agent.setConnectorRegistry(connectorRegistry);
 
+  // Load persisted token revocation list
+  await loadRevokedTokens(config);
+
   // Register plugins
-  await fastify.register(websocket);
+  await fastify.register(websocket, {
+    options: { maxPayload: 1_048_576 }, // 1 MB max WebSocket message
+  });
+
+  // CORS — restrict to localhost by default
+  fastify.addHook("onRequest", (request, reply, done) => {
+    const origin = request.headers.origin;
+    if (origin) {
+      const url = new URL(origin);
+      if (url.hostname === "localhost" || url.hostname === "127.0.0.1") {
+        reply.header("Access-Control-Allow-Origin", origin);
+        reply.header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+        reply.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+      }
+    }
+    if (request.method === "OPTIONS") {
+      reply.status(204).send();
+      return;
+    }
+    done();
+  });
 
   // Health check (no auth)
   fastify.get("/health", async () => ({
     status: "ok",
     uptime: process.uptime(),
-    sessions: sessionStore.list().length,
   }));
 
   // Register routes

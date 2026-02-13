@@ -20,12 +20,16 @@ export class DaemonClient {
       }, timeoutMs);
 
       try {
-        this.ws = new WebSocket(`${this.daemonUrl}?token=${encodeURIComponent(this.token)}`);
+        this.ws = new WebSocket(this.daemonUrl);
       } catch {
         clearTimeout(timer);
         resolve(false);
         return;
       }
+
+      this.ws.onopen = () => {
+        this.ws!.send(JSON.stringify({ type: "auth", token: this.token }));
+      };
 
       this.ws.onmessage = (event) => {
         try {

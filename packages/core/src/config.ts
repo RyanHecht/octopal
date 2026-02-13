@@ -192,7 +192,10 @@ export async function saveConfig(config: OctopalUserConfig): Promise<void> {
   if (existing.server || config.server) {
     merged.server = { ...existing.server, ...config.server };
   }
-  await fs.writeFile(CONFIG_PATH, TOML.stringify(merged as Record<string, unknown>) + "\n", "utf-8");
+  await fs.writeFile(CONFIG_PATH, TOML.stringify(merged as Record<string, unknown>) + "\n", {
+    encoding: "utf-8",
+    mode: 0o600,
+  });
 }
 
 export function isConfigured(config: ResolvedConfig): boolean {
