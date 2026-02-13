@@ -30,6 +30,8 @@ export interface DiscordConfig {
   botToken: string;
   /** Discord user IDs allowed to message the bot */
   allowedUsers: string[];
+  /** Channel IDs where the bot listens and responds (auto-threads) */
+  channels?: string[];
 }
 
 export interface OctopalUserConfig {
@@ -91,6 +93,9 @@ export const CONFIG_TEMPLATE = `# Octopal configuration
 
 # Discord user IDs allowed to interact with the bot
 # allowedUsers = []
+
+# Channel IDs where the bot listens and responds (creates threads automatically)
+# channels = []
 `;
 
 export async function loadConfig(): Promise<ResolvedConfig> {
@@ -121,10 +126,12 @@ export async function loadConfig(): Promise<ResolvedConfig> {
   // Discord env var overrides
   const envBotToken = process.env.OCTOPAL_DISCORD_BOT_TOKEN;
   const envAllowedUsers = process.env.OCTOPAL_DISCORD_ALLOWED_USERS;
+  const envChannels = process.env.OCTOPAL_DISCORD_CHANNELS;
   if (envBotToken) {
     base.discord = {
       botToken: envBotToken,
       allowedUsers: envAllowedUsers ? envAllowedUsers.split(",").map((s) => s.trim()) : [],
+      channels: envChannels ? envChannels.split(",").map((s) => s.trim()) : [],
     };
   }
 
@@ -148,11 +155,14 @@ export async function loadConfig(): Promise<ResolvedConfig> {
       base.scheduler.tickIntervalSeconds = saved.scheduler.tickIntervalSeconds ?? base.scheduler.tickIntervalSeconds;
     }
     if (saved.discord) {
-      base.discord ??= { botToken: saved.discord.botToken, allowedUsers: [] };
+      base.discord ??= { botToken: saved.discord.botToken, allowedUsers: [], channels: [] };
       base.discord.botToken = base.discord.botToken || saved.discord.botToken;
       base.discord.allowedUsers = base.discord.allowedUsers.length
         ? base.discord.allowedUsers
         : saved.discord.allowedUsers ?? [];
+      base.discord.channels = base.discord.channels?.length
+        ? base.discord.channels
+        : saved.discord.channels ?? [];
     }
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") {

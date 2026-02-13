@@ -51,6 +51,7 @@ export class OctopalAgent {
     sessionId?: string;
     infiniteSessions?: boolean;
     sessionLogging?: boolean;
+    extraTools?: import("@github/copilot-sdk").Tool<any>[];
   }): Promise<CopilotSession> {
     const vaultStructure = await this.para.getStructure();
 
@@ -94,13 +95,16 @@ export class OctopalAgent {
       ...(options?.disabledSkills?.length ? { disabledSkills: options.disabledSkills } : {}),
       ...(options?.sessionId ? { sessionId: options.sessionId } : {}),
       ...(options?.infiniteSessions ? { infiniteSessions: { enabled: true } } : {}),
-      tools: buildVaultTools({
-        vault: this.vault,
-        para: this.para,
-        tasks: this.tasks,
-        client: this.client,
-        scheduler: this.scheduler,
-      }),
+      tools: [
+        ...buildVaultTools({
+          vault: this.vault,
+          para: this.para,
+          tasks: this.tasks,
+          client: this.client,
+          scheduler: this.scheduler,
+        }),
+        ...(options?.extraTools ?? []),
+      ],
     });
 
     if (options?.onEvent) {

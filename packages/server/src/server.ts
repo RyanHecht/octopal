@@ -75,9 +75,41 @@ export async function createServer({ config, host, port }: ServerOptions) {
 
   // Start Discord connector if configured
   if (config.discord?.botToken) {
-    const { DiscordConnector } = await import("@octopal/connector-discord");
-    const discord = new DiscordConnector(config.discord, sessionStore);
+    const { DiscordConnector, buildDiscordTools } = await import("@octopal/connector-discord");
+
+    // Title generator uses a lightweight model for thread names
+    const titleGenerator = {
+      async generateTitle(messageText: string): Promise<string> {
+        const titleSession = await agent.client.createSession({
+          model: "claude-haiku-4.5",
+          systemMessage: {
+            mode: "replace",
+            content: "Generate a very brief thread title (max 5 words) for the following message. Reply with ONLY the title, no quotes or punctuation.",
+          },
+        });
+        try {
+          const resp = await titleSession.sendAndWait({ prompt: messageText }, 15_000);
+          return (resp?.data?.content ?? messageText.slice(0, 50)).trim();
+        } finally {
+          await titleSession.destroy();
+        }
+      },
+    };
+
+    const discord = new DiscordConnector(config.discord, sessionStore, titleGenerator);
     await discord.start();
+
+    // Track DM channel IDs for tool access validation
+    const dmChannelIds = new Set<string>();
+
+    // Build Discord tools and register them with the session store
+    const discordTools = buildDiscordTools({
+      client: discord.getClient(),
+      channelIds: discord.getChannelIds(),
+      dmChannelIds,
+    });
+    sessionStore.setExtraTools(discordTools);
+
     fastify.addHook("onClose", async () => {
       await discord.stop();
     });

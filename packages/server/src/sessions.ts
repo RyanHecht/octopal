@@ -1,4 +1,4 @@
-import type { CopilotSession, SessionEventHandler, AssistantMessageEvent } from "@github/copilot-sdk";
+import type { CopilotSession, SessionEventHandler, AssistantMessageEvent, Tool } from "@github/copilot-sdk";
 import type { OctopalAgent } from "@octopal/core";
 
 /**
@@ -6,12 +6,19 @@ import type { OctopalAgent } from "@octopal/core";
  *
  * Session IDs follow the pattern `{connector}-{channelId}`:
  * - `cli-abc123` — CLI user session (token JTI)
- * - `discord-123456` — Discord channel session
+ * - `discord-dm-123456` — Discord DM session
+ * - `discord-th-789012` — Discord thread session
  */
 export class SessionStore {
   private sessions = new Map<string, CopilotSession>();
+  private extraTools: Tool<any>[] = [];
 
   constructor(private agent: OctopalAgent) {}
+
+  /** Register extra tools that will be included in all new sessions */
+  setExtraTools(tools: Tool<any>[]): void {
+    this.extraTools = tools;
+  }
 
   /** Get an existing session or create a new one */
   async getOrCreate(
@@ -32,6 +39,7 @@ export class SessionStore {
       sessionId,
       infiniteSessions: true,
       onEvent: options?.onEvent,
+      extraTools: this.extraTools,
     });
 
     this.sessions.set(sessionId, session);

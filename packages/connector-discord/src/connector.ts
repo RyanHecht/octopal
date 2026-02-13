@@ -16,22 +16,42 @@ export interface ConnectorSessionStore {
   ): Promise<{ response: { data?: { content?: string } } | undefined; recovered: boolean }>;
 }
 
+/** Generates a short thread title from a user message */
+export interface ThreadTitleGenerator {
+  generateTitle(messageText: string): Promise<string>;
+}
+
 export class DiscordConnector {
   private client: Client;
   private allowedSet: Set<string>;
+  private channelSet: Set<string>;
 
   constructor(
     private config: DiscordConfig,
     private sessionStore: ConnectorSessionStore,
+    private titleGenerator?: ThreadTitleGenerator,
   ) {
     this.allowedSet = new Set(config.allowedUsers);
+    this.channelSet = new Set(config.channels ?? []);
     this.client = new Client({
       intents: [
         GatewayIntentBits.DirectMessages,
         GatewayIntentBits.MessageContent,
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
       ],
-      partials: [Partials.Channel],
+      partials: [Partials.Channel, Partials.Message],
     });
+  }
+
+  /** Expose the Discord client for tools */
+  getClient(): Client {
+    return this.client;
+  }
+
+  /** Get the set of configured channel IDs */
+  getChannelIds(): Set<string> {
+    return this.channelSet;
   }
 
   async start(): Promise<void> {
@@ -58,27 +78,87 @@ export class DiscordConnector {
     // Ignore bots
     if (message.author.bot) return;
 
-    // DMs only
-    if (message.channel.type !== ChannelType.DM) return;
-
     // Whitelist check
-    if (!this.allowedSet.has(message.author.id)) {
-      return;
-    }
+    if (!this.allowedSet.has(message.author.id)) return;
 
     const text = message.content.trim();
     if (!text) return;
 
-    const sessionId = `discord-${message.author.id}`;
+    const channelType = message.channel.type;
+
+    // DM
+    if (channelType === ChannelType.DM) {
+      await this.handleDM(message, text);
+      return;
+    }
+
+    // Thread in a configured channel
+    if (
+      channelType === ChannelType.PublicThread ||
+      channelType === ChannelType.PrivateThread
+    ) {
+      const parentId = message.channel.parentId;
+      if (parentId && this.channelSet.has(parentId)) {
+        await this.handleThread(message, text);
+      }
+      return;
+    }
+
+    // Message in a configured channel — auto-create thread
+    if (channelType === ChannelType.GuildText && this.channelSet.has(message.channel.id)) {
+      await this.handleChannelMessage(message, text);
+      return;
+    }
+  }
+
+  /** Handle a DM message */
+  private async handleDM(message: Message, text: string): Promise<void> {
+    const sessionId = `discord-dm-${message.author.id}`;
     const channel = message.channel;
+    if (!("send" in channel)) return;
+    await this.replyInChannel(channel, sessionId, text);
+  }
 
-    if (!("sendTyping" in channel)) return;
+  /** Handle a message in an existing thread */
+  private async handleThread(message: Message, text: string): Promise<void> {
+    const sessionId = `discord-th-${message.channel.id}`;
+    const channel = message.channel;
+    if (!("send" in channel)) return;
+    await this.replyInChannel(channel, sessionId, text);
+  }
 
+  /** Handle a message in a configured channel — auto-create a thread */
+  private async handleChannelMessage(message: Message, text: string): Promise<void> {
+    // Generate a thread title
+    let threadName = text.slice(0, 50);
+    if (this.titleGenerator) {
+      try {
+        threadName = await this.titleGenerator.generateTitle(text);
+      } catch (err) {
+        console.error("[discord] Failed to generate thread title, using fallback:", err);
+      }
+    }
+
+    // Create thread from the message
+    const thread = await message.startThread({
+      name: threadName.slice(0, 100), // Discord limit
+    });
+
+    const sessionId = `discord-th-${thread.id}`;
+    await this.replyInChannel(thread, sessionId, text);
+  }
+
+  /** Send a prompt to the agent and reply in the given channel */
+  private async replyInChannel(
+    channel: { send(content: string): Promise<any>; sendTyping?(): Promise<any> },
+    sessionId: string,
+    text: string,
+  ): Promise<void> {
     // Show typing indicator while processing
     const typingInterval = setInterval(() => {
-      channel.sendTyping().catch(() => {});
+      channel.sendTyping?.().catch(() => {});
     }, 8_000);
-    await channel.sendTyping().catch(() => {});
+    await channel.sendTyping?.().catch(() => {});
 
     try {
       const { response, recovered } = await this.sessionStore.sendOrRecover(sessionId, text);
@@ -98,9 +178,7 @@ export class DiscordConnector {
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
       console.error(`[discord] Session ${sessionId} error:`, errMsg);
-      if ("send" in message.channel) {
-        await message.channel.send("Sorry, something went wrong processing your message.").catch(() => {});
-      }
+      await channel.send("Sorry, something went wrong processing your message.").catch(() => {});
     } finally {
       clearInterval(typingInterval);
     }
