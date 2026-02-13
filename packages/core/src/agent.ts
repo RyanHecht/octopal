@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { VaultManager } from "./vault.js";
 import { ParaManager } from "./para.js";
 import { TaskManager } from "./tasks.js";
+import { SessionLogger } from "./session-logger.js";
 import { buildVaultTools } from "./tools.js";
 import { SYSTEM_PROMPT } from "./prompts.js";
 import type { OctopalConfig } from "./types.js";
@@ -42,6 +43,7 @@ export class OctopalAgent {
     disabledSkills?: string[];
     sessionId?: string;
     infiniteSessions?: boolean;
+    sessionLogging?: boolean;
   }): Promise<CopilotSession> {
     const vaultStructure = await this.para.getStructure();
 
@@ -95,6 +97,13 @@ export class OctopalAgent {
 
     if (options?.onEvent) {
       session.on(options.onEvent);
+    }
+
+    // Attach session logger unless explicitly disabled
+    if (options?.sessionLogging !== false) {
+      const logSessionId = options?.sessionId ?? session.sessionId ?? "unknown";
+      const logger = new SessionLogger(this.vault, logSessionId);
+      logger.attach(session);
     }
 
     return session;
