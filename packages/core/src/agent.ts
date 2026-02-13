@@ -66,7 +66,7 @@ export class OctopalAgent {
     // Load user identity if it exists
     let identity = "";
     try {
-      identity = await readFileIfExists(path.join(this.config.configDir, "identity.md"));
+      identity = await this.vault.readFile(".octopal/identity.md");
     } catch {
       // No identity file
     }

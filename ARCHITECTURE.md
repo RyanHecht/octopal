@@ -682,7 +682,7 @@ const session = await agent.createSession({
 
 ### User Identity
 
-Place `~/.octopal/identity.md` to inject personal context (name, role, preferences) into every session. This is read and appended to the system prompt automatically.
+Place `.octopal/identity.md` in your vault to inject personal context (name, location, role, preferences) into every session. This is read and appended to the system prompt automatically.
 
 ---
 
