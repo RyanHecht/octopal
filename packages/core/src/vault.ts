@@ -127,6 +127,10 @@ export class VaultManager {
     }
   }
 
+  async deleteFile(relativePath: string): Promise<void> {
+    await fs.unlink(path.join(this.config.localPath, relativePath));
+  }
+
   async moveFile(from: string, to: string): Promise<void> {
     const fullFrom = path.join(this.config.localPath, from);
     const fullTo = path.join(this.config.localPath, to);

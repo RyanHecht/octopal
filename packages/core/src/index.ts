@@ -26,6 +26,17 @@ export { SessionLogger } from "./session-logger.js";
 export { runPreprocessor } from "./preprocessor.js";
 export type { PreprocessorResult } from "./preprocessor.js";
 export { loadConfig, saveConfig, isConfigured, CONFIG_TEMPLATE } from "./config.js";
-export type { OctopalUserConfig, ResolvedConfig, ServerConfig, DiscordConfig } from "./config.js";
+export type { OctopalUserConfig, ResolvedConfig, ServerConfig, SchedulerConfig, DiscordConfig } from "./config.js";
+export { Scheduler } from "./scheduler.js";
+export type { SchedulerOptions } from "./scheduler.js";
+export {
+  toCron,
+  cronMatches,
+} from "./schedule-types.js";
+export type {
+  ScheduledTask,
+  ScheduleFile,
+  ScheduleHistoryEntry,
+} from "./schedule-types.js";
 export type * from "./types.js";
 export type { OctopalConnector, InboundMessage, OutboundMessage } from "./connector.js";

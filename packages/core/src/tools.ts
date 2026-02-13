@@ -1,20 +1,24 @@
 import { defineTool } from "@github/copilot-sdk";
 import type { CopilotClient } from "@github/copilot-sdk";
 import { z } from "zod";
+import * as TOML from "smol-toml";
 import type { VaultManager } from "./vault.js";
 import { type ParaManager, ParaCategory } from "./para.js";
 import { type TaskManager, TaskPriority } from "./tasks.js";
 import { runPreprocessor } from "./preprocessor.js";
+import type { Scheduler } from "./scheduler.js";
+import { toCron } from "./schedule-types.js";
 
 export interface ToolDeps {
   vault: VaultManager;
   para: ParaManager;
   tasks: TaskManager;
   client: CopilotClient;
+  scheduler?: Scheduler;
 }
 
 /** Build all vault tools as Copilot SDK Tool objects */
-export function buildVaultTools({ vault, para, tasks, client }: ToolDeps) {
+export function buildVaultTools({ vault, para, tasks, client, scheduler }: ToolDeps) {
   return [
     defineTool("analyze_input", {
       description:
@@ -325,6 +329,97 @@ export function buildVaultTools({ vault, para, tasks, client }: ToolDeps) {
         }
 
         return `Added triage item: ${desc}`;
+      },
+    }),
+
+    // ── Scheduler tools ──────────────────────────────────────────────
+
+    defineTool("schedule_task", {
+      description:
+        "Create a scheduled task that runs a prompt on a recurring schedule or at a specific one-off time. The schedule is persisted to the vault.",
+      parameters: z.object({
+        name: z.string().describe("Human-readable name for the task"),
+        prompt: z.string().describe("The prompt to send to the agent when the task runs"),
+        schedule: z.string().optional().describe("Cron expression (e.g. '0 9 * * MON-FRI') or interval sugar ('daily', 'hourly', 'every 30m'). Required for recurring tasks."),
+        once: z.string().optional().describe("ISO 8601 datetime for a one-off task (e.g. '2026-02-14T09:00:00'). Mutually exclusive with schedule."),
+        skill: z.string().optional().describe("Optional skill name to target"),
+      }),
+      handler: async ({ name, prompt, schedule, once, skill }: any) => {
+        if (!schedule && !once) {
+          return "Error: provide either 'schedule' (recurring) or 'once' (one-off).";
+        }
+
+        // Validate cron/interval if provided
+        if (schedule) {
+          try {
+            toCron(schedule);
+          } catch (err) {
+            return `Error: invalid schedule "${schedule}": ${err instanceof Error ? err.message : err}`;
+          }
+        }
+
+        const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+        const filePath = `.octopal/schedules/${slug}.toml`;
+
+        const def: Record<string, unknown> = { name, prompt };
+        if (schedule) def.schedule = schedule;
+        if (once) def.once = once;
+        if (skill) def.skill = skill;
+
+        await vault.writeFile(filePath, TOML.stringify(def) + "\n");
+
+        if (scheduler) await scheduler.reload();
+
+        return `Scheduled task "${name}" saved to ${filePath}`;
+      },
+    }),
+
+    defineTool("cancel_scheduled_task", {
+      description:
+        "Cancel and remove a scheduled task by its ID (the filename without .toml extension). Builtin tasks cannot be cancelled.",
+      parameters: z.object({
+        taskId: z.string().describe("The task ID to cancel (e.g. 'daily-digest')"),
+      }),
+      handler: async ({ taskId }: any) => {
+        if (scheduler) {
+          const task = scheduler.listTasks().find((t) => t.id === taskId);
+          if (!task) return `No scheduled task found with ID "${taskId}".`;
+          if (task.builtin) return `Cannot cancel builtin task "${task.name}".`;
+        }
+
+        const filePath = `.octopal/schedules/${taskId}.toml`;
+        try {
+          await vault.deleteFile(filePath);
+        } catch {
+          return `No schedule file found for "${taskId}".`;
+        }
+
+        if (scheduler) await scheduler.reload();
+
+        return `Cancelled and removed scheduled task "${taskId}".`;
+      },
+    }),
+
+    defineTool("list_scheduled_tasks", {
+      description: "List all active scheduled tasks (both recurring and one-off, including builtins)",
+      parameters: z.object({}),
+      handler: async () => {
+        if (!scheduler) {
+          return "Scheduler is not available (server not running).";
+        }
+
+        const tasks = scheduler.listTasks();
+        if (tasks.length === 0) return "No scheduled tasks.";
+
+        return tasks.map((t) => {
+          const type = t.once ? `once: ${t.once}` : `schedule: ${t.schedule}`;
+          const flags = [
+            t.builtin ? "builtin" : null,
+            !t.enabled ? "disabled" : null,
+          ].filter(Boolean).join(", ");
+          const flagStr = flags ? ` (${flags})` : "";
+          return `- **${t.name}** [${t.id}] — ${type}${flagStr}`;
+        }).join("\n");
       },
     }),
   ];

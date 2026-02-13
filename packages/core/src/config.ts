@@ -18,6 +18,13 @@ export interface ServerConfig {
   tokenSecret?: string;
 }
 
+export interface SchedulerConfig {
+  /** Whether the scheduler is enabled (default: true) */
+  enabled?: boolean;
+  /** Tick interval in seconds (default: 60) */
+  tickIntervalSeconds?: number;
+}
+
 export interface DiscordConfig {
   /** Discord bot token */
   botToken: string;
@@ -30,6 +37,8 @@ export interface OctopalUserConfig {
   vaultRemoteUrl?: string;
   /** Server configuration */
   server?: ServerConfig;
+  /** Scheduler configuration */
+  scheduler?: SchedulerConfig;
   /** Discord connector configuration */
   discord?: DiscordConfig;
 }
@@ -44,6 +53,10 @@ export interface ResolvedConfig {
     port: number;
     passwordHash?: string;
     tokenSecret?: string;
+  };
+  scheduler: {
+    enabled: boolean;
+    tickIntervalSeconds: number;
   };
   discord?: DiscordConfig;
 }
@@ -65,6 +78,13 @@ export const CONFIG_TEMPLATE = `# Octopal configuration
 # Auto-generated on first login
 # tokenSecret = ""
 
+[scheduler]
+# Whether the scheduler is enabled (default: true)
+# enabled = true
+
+# How often the scheduler checks for due tasks, in seconds (default: 60)
+# tickIntervalSeconds = 60
+
 [discord]
 # Bot token for the Discord connector
 # botToken = ""
@@ -80,6 +100,10 @@ export async function loadConfig(): Promise<ResolvedConfig> {
     vaultPath: VAULT_DIR,
     server: {
       port: 3847,
+    },
+    scheduler: {
+      enabled: true,
+      tickIntervalSeconds: 60,
     },
   };
 
@@ -118,6 +142,10 @@ export async function loadConfig(): Promise<ResolvedConfig> {
       base.server.port = saved.server.port ?? base.server.port;
       base.server.passwordHash = saved.server.passwordHash;
       base.server.tokenSecret = saved.server.tokenSecret;
+    }
+    if (saved.scheduler) {
+      base.scheduler.enabled = saved.scheduler.enabled ?? base.scheduler.enabled;
+      base.scheduler.tickIntervalSeconds = saved.scheduler.tickIntervalSeconds ?? base.scheduler.tickIntervalSeconds;
     }
     if (saved.discord) {
       base.discord ??= { botToken: saved.discord.botToken, allowedUsers: [] };

@@ -203,21 +203,28 @@ What happens:
 
 ### `config.ts` — Configuration
 
-Manages `~/.octopal/config.json` and resolves the vault location.
+Manages `~/.octopal/config.toml` and resolves the vault location.
 
 **Config file format:**
 ```toml
 vaultRemoteUrl = "https://github.com/username/vault.git"
+
+[server]
+port = 3847
+
+[scheduler]
+enabled = true
+tickIntervalSeconds = 60
 ```
 
 **Key functions:**
-- `loadConfig()` — Reads `~/.octopal/config.json`, merges with env var overrides (`OCTOPAL_VAULT_PATH`, `OCTOPAL_VAULT_REMOTE`), returns a `ResolvedConfig` with all paths filled in.
+- `loadConfig()` — Reads `~/.octopal/config.toml`, merges with env var overrides (`OCTOPAL_VAULT_PATH`, `OCTOPAL_VAULT_REMOTE`), returns a `ResolvedConfig` with all paths filled in.
 - `saveConfig(config)` — Merges new values into the existing config file.
 - `isConfigured(config)` — Returns true if a vault repo or remote URL is set.
 
 **Resolution order:**
 1. Environment variables (`OCTOPAL_HOME`, `OCTOPAL_VAULT_PATH`, `OCTOPAL_VAULT_REMOTE`) — highest priority
-2. `~/.octopal/config.json` — created by `octopal setup`
+2. `~/.octopal/config.toml` — created by `octopal setup`
 3. Defaults — config at `~/.octopal/`, vault at `~/.octopal/vault/`
 
 `OCTOPAL_HOME` overrides the base directory for all octopal data (config, vault). This is used by the test agent to create isolated test environments.
@@ -230,6 +237,7 @@ The `VaultManager` class handles all interactions with the PARA vault on disk. I
 - `init()` — Clones the vault repo (if remote URL given) or creates a local directory. Pulls latest if it already exists.
 - `readFile(path)` / `writeFile(path, content)` — Read/write files relative to the vault root.
 - `appendToFile(path, content)` — Append to existing file (or create it).
+- `deleteFile(path)` — Remove a file from the vault.
 - `commitAndPush(message)` — `git add -A && git commit && git push`. Handles offline gracefully.
 - `search(query)` — Walks all `.md` files and returns lines matching the query.
 
@@ -315,13 +323,16 @@ PARA-specific details (directory structure, task format, etc.) live in `skills/p
 
 Vault tools built with the Copilot SDK's `defineTool()`. Key exports:
 - `buildVaultTools(deps)` — returns all vault tools as a `Tool[]` array
-- `ToolDeps` — interface: `{ vault, para, tasks, client }`
+- `ToolDeps` — interface: `{ vault, para, tasks, client, scheduler? }`
 
 Notable tools:
 - `analyze_input` — runs the two-phase preprocessor (deterministic + semantic matching) against the knowledge base. The PARA skill instructs the agent to call this before processing raw input.
 - `read_note`, `write_note`, `append_to_note` — vault file operations
 - `save_knowledge`, `lookup_knowledge` — knowledge base management
 - `commit_changes` — git commit and push
+- `schedule_task` — create a recurring or one-off scheduled task (persisted to vault as TOML)
+- `cancel_scheduled_task` — remove a scheduled task by ID (builtins cannot be cancelled)
+- `list_scheduled_tasks` — list all active scheduled tasks
 
 ### `auth.ts` — Authentication
 
@@ -351,9 +362,54 @@ Runs before the main agent during ingest. Phase 1 (deterministic) matches known 
 **Key exports:**
 - `runPreprocessor(client, vault, rawInput)` — Returns matched knowledge entries, high-confidence new aliases, low-confidence triage items, and new entity candidates
 
+### `schedule-types.ts` — Schedule Types & Cron Parser
+
+Types for scheduled task definitions and a minimal hand-rolled 5-field cron matcher (no external dependencies).
+
+**Key types:**
+- `ScheduledTask` — runtime representation of a scheduled task (id, name, schedule, prompt, enabled, builtin, once, etc.)
+- `ScheduleFile` — the shape of a `.toml` schedule file in the vault
+- `ScheduleHistoryEntry` — a record of a task execution (timestamps, success/failure, summary)
+
+**Key functions:**
+- `toCron(input)` — Converts interval sugar to cron, or returns cron as-is. Supported sugar: `"hourly"`, `"daily"`, `"weekly"`, `"monthly"`, `"every 30m"`, `"every 6h"`.
+- `cronMatches(cron, date)` — Returns true if a `Date` matches a 5-field cron expression. Supports ranges, steps, lists, and named days/months (e.g., `MON-FRI`).
+
+### `scheduler.ts` — Task Scheduler
+
+Loads schedules from the vault, runs a periodic tick loop, and executes due tasks as one-shot agent sessions.
+
+**How it works:**
+1. `Scheduler` is created with `{ agent, vault, enabled, tickIntervalSeconds }`
+2. `registerBuiltin(task)` adds code-defined schedules (e.g., vault-sync). These cannot be cancelled via the agent tool.
+3. `start()` loads all `.toml` files from `<vault>/.octopal/schedules/`, then begins a `setTimeout`-based tick loop (default: 60 seconds)
+4. On each tick, it checks which tasks are due (via `cronMatches`). Recurring tasks don't re-run if already executed this minute. One-off tasks fire when their scheduled time has passed.
+5. Execution creates a one-shot agent session (via `agent.run()`), sends the prompt, and collects the response. Builtins (prompts starting with `__builtin:`) bypass the agent and run directly (e.g., `vault.pull()`).
+6. Results are appended to `.octopal/schedules/history.md` as a markdown table row.
+7. One-off tasks are deleted from the vault after execution.
+
+**Key methods:**
+- `start()` / `stop()` — lifecycle
+- `reload()` — re-reads schedule files from vault (called by `schedule_task` / `cancel_scheduled_task` tools)
+- `listTasks()` — returns all active schedules
+- `registerBuiltin(task)` — add a code-defined schedule
+
+**Schedule file format** (`.octopal/schedules/*.toml`):
+```toml
+name = "Daily Digest"
+schedule = "0 9 * * MON-FRI"   # cron or interval sugar ("daily", "every 30m")
+prompt = "Generate my daily digest of open tasks and upcoming deadlines"
+# skill = "para"               # optional: target a specific skill
+# enabled = false              # optional: disable without deleting
+# once = "2026-02-14T09:00:00" # for one-off tasks (mutually exclusive with schedule)
+```
+
+**Builtin tasks:**
+- `vault-sync` — runs `git pull` every 30 minutes to keep the vault in sync
+
 ### `cli/index.ts` — CLI Entry Point
 
-Parses command-line arguments and routes to the right handler. Reads config from `~/.octopal/config.json` (created by `octopal setup`).
+Parses command-line arguments and routes to the right handler. Reads config from `~/.octopal/config.toml` (created by `octopal setup`).
 
 Commands:
 - `octopal setup` — Launches the interactive onboarding agent
@@ -415,6 +471,7 @@ The Octopal daemon — a Fastify server that owns the `OctopalAgent` instance an
 
 **Architecture:**
 - Single `OctopalAgent` instance, initialized at startup
+- `Scheduler` runs alongside the agent — loads schedules from vault, ticks every 60s, executes due tasks as one-shot agent sessions
 - `SessionStore` maps deterministic IDs (`{connector}:{channelId}`) to persistent SDK sessions
 - Sessions use `infiniteSessions` for automatic context compaction
 - Auth: admin password (scrypt hash) → mints scoped JWT bearer tokens for clients
@@ -464,7 +521,7 @@ octopal serve                    # Start daemon on port 3847
 octopal serve --port 8080        # Custom port
 ```
 
-**Config extension:** `~/.octopal/config.toml` gains a `server` field:
+**Config extension:** `~/.octopal/config.toml` gains `server` and `scheduler` sections:
 ```toml
 vaultRemoteUrl = "https://github.com/user/vault.git"
 
@@ -472,6 +529,10 @@ vaultRemoteUrl = "https://github.com/user/vault.git"
 port = 3847
 passwordHash = "salt:hash..."
 tokenSecret = "hex..."
+
+[scheduler]
+enabled = true
+tickIntervalSeconds = 60
 ```
 
 ### `.octopal/conventions.md` — User-Defined Conventions

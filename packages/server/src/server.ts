@@ -2,6 +2,7 @@ import Fastify from "fastify";
 import websocket from "@fastify/websocket";
 import {
   OctopalAgent,
+  Scheduler,
   type ResolvedConfig,
 } from "@octopal/core";
 import { authRoutes } from "./routes/auth.js";
@@ -33,6 +34,25 @@ export async function createServer({ config, host, port }: ServerOptions) {
   });
   await agent.init();
 
+  // Initialize the scheduler
+  const scheduler = new Scheduler({
+    agent,
+    vault: agent.vault,
+    enabled: config.scheduler.enabled,
+    tickIntervalSeconds: config.scheduler.tickIntervalSeconds,
+  });
+
+  // Register builtin scheduled tasks
+  scheduler.registerBuiltin({
+    id: "vault-sync",
+    name: "Vault Sync",
+    schedule: "*/30 * * * *",
+    prompt: "__builtin:vault-sync",
+  });
+
+  // Make scheduler available to agent sessions
+  agent.setScheduler(scheduler);
+
   const sessionStore = new SessionStore(agent);
 
   // Register plugins
@@ -63,8 +83,12 @@ export async function createServer({ config, host, port }: ServerOptions) {
     });
   }
 
+  // Start the scheduler
+  await scheduler.start();
+
   // Graceful cleanup
   fastify.addHook("onClose", async () => {
+    scheduler.stop();
     await sessionStore.destroyAll();
     await agent.stop();
   });

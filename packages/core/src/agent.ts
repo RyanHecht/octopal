@@ -10,6 +10,7 @@ import { SessionLogger } from "./session-logger.js";
 import { buildVaultTools } from "./tools.js";
 import { SYSTEM_PROMPT } from "./prompts.js";
 import type { OctopalConfig } from "./types.js";
+import type { Scheduler } from "./scheduler.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -18,6 +19,7 @@ export class OctopalAgent {
   readonly vault: VaultManager;
   readonly para: ParaManager;
   private tasks: TaskManager;
+  private scheduler?: Scheduler;
 
   constructor(private config: OctopalConfig) {
     this.client = new CopilotClient({
@@ -26,6 +28,11 @@ export class OctopalAgent {
     this.vault = new VaultManager(config.vault);
     this.para = new ParaManager(this.vault);
     this.tasks = new TaskManager();
+  }
+
+  /** Attach the scheduler so it's available to agent tools */
+  setScheduler(scheduler: Scheduler): void {
+    this.scheduler = scheduler;
   }
 
   async init(): Promise<void> {
@@ -92,6 +99,7 @@ export class OctopalAgent {
         para: this.para,
         tasks: this.tasks,
         client: this.client,
+        scheduler: this.scheduler,
       }),
     });
 
