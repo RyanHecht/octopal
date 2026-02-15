@@ -35,4 +35,4 @@ Use the `@test-octopal` agent (`.github/agents/test-octopal.agent.md`) to test i
 
 ## Architecture
 
-See ARCHITECTURE.md for detailed module documentation and extension guide.
+See the [wiki](wiki/) for detailed documentation — [Architecture](wiki/Architecture.md), [Contributing](wiki/Contributing.md), and more.

@@ -111,7 +111,7 @@ git diff HEAD~10..HEAD      # Last 10 commits
    | `packages/connector/**` | Connectors.md |
    | `skills/**` | Skills-System.md |
    | `package.json` | Getting-Started.md, Architecture.md |
-   | `ARCHITECTURE.md` | Architecture.md |
+   | `ARCHITECTURE.md` | _(pointer file — no content to sync)_ |
    | `README.md` | Home.md, Getting-Started.md |
 
 3. **Read the current wiki page** — Read the relevant wiki page(s)

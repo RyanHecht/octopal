@@ -93,18 +93,17 @@ octopal/
 │   ├── para/           # PARA vault-organization skill (default)
 │   └── github/         # GitHub workflow conventions
 ├── vault-template/     # Starter template for a new vault
-├── ARCHITECTURE.md     # Detailed guide to maintaining and extending octopal
+├── wiki/               # GitHub wiki (architecture, contributing, API docs)
 └── package.json        # npm workspaces root
 ```
 
 ## Architecture
 
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for a detailed guide covering:
-- The skills system and three-tier skill resolution
-- How each module works
-- How to add new agent tools
-- How to build new connectors (Discord, desktop, etc.)
-- TypeScript patterns used in this project
+See the [wiki](wiki/) for detailed documentation:
+- [Architecture](wiki/Architecture.md) — system design, packages, data flow
+- [Contributing](wiki/Contributing.md) — development setup, adding tools/skills/connectors
+- [Connectors](wiki/Connectors.md) — Discord, remote connectors, building your own
+- [Daemon and API](wiki/Daemon-and-API.md) — REST endpoints and WebSocket protocol
 
 ## Skills
 
