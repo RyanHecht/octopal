@@ -3,7 +3,7 @@ const originalError = console.error;
 const originalWarn = console.warn;
 
 function timestamp(): string {
-  return new Date().toLocaleString();
+  return new Date().toISOString();
 }
 
 /** Override console methods to prepend a localized timestamp. */
