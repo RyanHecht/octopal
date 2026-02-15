@@ -1,0 +1,12 @@
+# Build dependencies and compile TypeScript
+node_modules
+dist
+*.tsbuildinfo
+.git
+.github
+.env*
+*.md
+!README.md
+wiki/
+extensions/*/node_modules
+extensions/*/dist

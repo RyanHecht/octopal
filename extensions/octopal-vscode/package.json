@@ -1,0 +1,64 @@
+{
+  "name": "octopal-vscode",
+  "displayName": "Octopal",
+  "description": "Personal AI knowledge assistant — chat with your vault via the VS Code Agents panel",
+  "version": "0.1.0",
+  "publisher": "octopal",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.109.0"
+  },
+  "categories": ["AI", "Chat"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./dist/extension.js",
+  "enabledApiProposals": ["chatSessionsProvider"],
+  "contributes": {
+    "chatSessions": [
+      {
+        "id": "octopal",
+        "label": "Octopal",
+        "description": "Personal AI knowledge assistant"
+      }
+    ],
+    "commands": [
+      {
+        "command": "octopal.signIn",
+        "title": "Octopal: Sign In"
+      },
+      {
+        "command": "octopal.signOut",
+        "title": "Octopal: Sign Out"
+      }
+    ],
+    "configuration": {
+      "title": "Octopal",
+      "properties": {
+        "octopal.daemonUrl": {
+          "type": "string",
+          "default": "ws://localhost:3847/ws",
+          "description": "WebSocket URL for the Octopal daemon"
+        },
+        "octopal.autoConnect": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically connect to the daemon on startup"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --sourcemap",
+    "watch": "npm run build -- --watch",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.109.0",
+    "@types/ws": "^8.18.0",
+    "@vscode/dts": "^0.4.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.9.0"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

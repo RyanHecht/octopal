@@ -167,6 +167,7 @@ async function main() {
         remoteUrl: config.vaultRemoteUrl,
       },
       configDir: config.configDir,
+      vaultBaseUrl: config.vaultBaseUrl,
     });
 
     await agent.init();
@@ -209,6 +210,7 @@ async function main() {
         remoteUrl: config.vaultRemoteUrl,
       },
       configDir: config.configDir,
+      vaultBaseUrl: config.vaultBaseUrl,
     });
 
     console.log("🐙 Processing your input...\n");

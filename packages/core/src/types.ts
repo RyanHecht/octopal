@@ -9,6 +9,8 @@ export interface OctopalConfig {
   vault: VaultConfig;
   /** Base config directory (e.g. ~/.octopal) */
   configDir: string;
+  /** Base URL for the web vault viewer, when available */
+  vaultBaseUrl?: string;
 }
 
 export interface NoteMetadata {

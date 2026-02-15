@@ -104,6 +104,11 @@ export class OctopalAgent {
       }
     }
 
+    // Inject web viewer context when available
+    if (this.config.vaultBaseUrl) {
+      promptContent += `\n\n## Web Viewer\nA web-based vault viewer is available at ${this.config.vaultBaseUrl}. When referencing vault notes, format them as clickable markdown links: [Note Title](${this.config.vaultBaseUrl}/?file=path/to/Note.md) instead of [[wikilinks]]. This lets users click through to view the note directly. For notes you're unsure about the path for, use [[wikilinks]] as usual — they'll be resolved automatically.`;
+    }
+
     // Build hooks for automatic knowledge retrieval and ingestion
     const knowledgeOps: KnowledgeOperation[] = [];
 

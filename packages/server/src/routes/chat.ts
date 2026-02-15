@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { requireAuth } from "./auth.js";
-import type { ResolvedConfig } from "@octopal/core";
+import { transformWikilinks, type ResolvedConfig } from "@octopal/core";
 import type { SessionStore } from "../sessions.js";
 
 export function chatRoutes(config: ResolvedConfig, sessionStore: SessionStore) {
@@ -23,7 +23,10 @@ export function chatRoutes(config: ResolvedConfig, sessionStore: SessionStore) {
 
       try {
         const { response, recovered } = await sessionStore.sendOrRecover(sessionId, text.trim());
-        const responseText = response?.data?.content ?? "";
+        let responseText = response?.data?.content ?? "";
+        if (config.vaultBaseUrl && responseText) {
+          responseText = transformWikilinks(responseText, config.vaultBaseUrl);
+        }
 
         return { sessionId, text: responseText, recovered };
       } catch (err: unknown) {

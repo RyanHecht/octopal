@@ -1,0 +1,15 @@
+FROM codercom/code-server:latest
+
+# PWA branding: override manifest values
+# code-server serves the manifest from its built-in route; we patch it at runtime
+ENV CS_DISABLE_GETTING_STARTED_OVERRIDE=1
+
+# Pre-install recommended vault extensions
+RUN code-server --install-extension foam.foam-vscode 2>/dev/null || true && \
+    code-server --install-extension yzhang.markdown-all-in-one 2>/dev/null || true && \
+    code-server --install-extension bierner.markdown-preview-github-styles 2>/dev/null || true
+
+# Copy startup script that patches PWA manifest
+COPY --chmod=755 scripts/code-server-startup.sh /usr/local/bin/octopal-startup.sh
+
+ENTRYPOINT ["/usr/local/bin/octopal-startup.sh"]

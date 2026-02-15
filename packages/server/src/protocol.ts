@@ -54,13 +54,20 @@ export interface ConnectorResponseMessage {
   error?: string;
 }
 
+/** Notify daemon that vault files were changed (e.g. by the user in code-server) */
+export interface VaultFilesChangedMessage {
+  type: "vault.files_changed";
+  paths: string[];
+}
+
 export type ClientMessage =
   | AuthMessage
   | PingMessage
   | ChatSendMessage
   | ConnectorRegisterMessage
   | ConnectorChannelMessage
-  | ConnectorResponseMessage;
+  | ConnectorResponseMessage
+  | VaultFilesChangedMessage;
 
 // ── Daemon → Client ──────────────────────────────────────────────
 
@@ -123,6 +130,16 @@ export interface ConnectorReplyMessage {
   text: string;
 }
 
+export interface VaultCommittedMessage {
+  type: "vault.committed";
+  paths: string[];
+}
+
+export interface VaultErrorMessage {
+  type: "vault.error";
+  error: string;
+}
+
 export interface ErrorMessage {
   type: "error";
   error: string;
@@ -139,6 +156,8 @@ export type DaemonMessage =
   | ConnectorAckMessage
   | ConnectorRequestMessage
   | ConnectorReplyMessage
+  | VaultCommittedMessage
+  | VaultErrorMessage
   | ErrorMessage;
 
 // ── Auth Scopes ──────────────────────────────────────────────────

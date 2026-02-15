@@ -46,3 +46,4 @@ export type * from "./types.js";
 export type { OctopalConnector, InboundMessage, OutboundMessage } from "./connector.js";
 export { BackgroundTaskManager } from "./background-tasks.js";
 export type { BackgroundRun, BackgroundTaskEvents } from "./background-tasks.js";
+export { transformWikilinks, buildFileIndex } from "./wikilinks.js";

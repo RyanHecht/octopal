@@ -46,7 +46,7 @@ Deferred items extracted from 20 Copilot CLI session plans, cross-referenced aga
 
 ### Web UI Connector
 - **What**: Browser-based interaction with Octopal, real-time streaming activity panel
-- **Blocks**: Non-terminal, non-Discord interaction; visual observability of agent activity
+- **Status**: ✅ Partially implemented — code-server + VS Code extension provides chat via Agent HQ panel. Dedicated activity panel deferred.
 
 ### Discord Voice Chat
 - **What**: Voice-based interaction via `@discordjs/voice` + opus/sodium, STT/TTS services (Whisper, ElevenLabs)
@@ -140,7 +140,8 @@ Deferred items extracted from 20 Copilot CLI session plans, cross-referenced aga
 
 ### Docker Support
 - **What**: Dockerfile and docker-compose.yml for containerized deployment
-- **Note**: Explicitly noted as out of scope for Phase 2, but design is container-friendly
+- **Status**: ✅ Implemented — See [Docker Deployment](wiki/Docker-Deployment.md)
+- **Includes**: Multi-stage Dockerfile, docker-compose with code-server vault viewer, Traefik TLS overlay, VS Code extension for Agent HQ chat, clickable vault note links
 
 ---
 
@@ -179,12 +180,10 @@ Deferred items extracted from 20 Copilot CLI session plans, cross-referenced aga
 7. ConnectorRegistry per-socket request tracking (before multiple connectors)
 8. Full WebSocket event forwarding (before web UI)
 9. Built-in scheduled skills (github-issues, commitments)
-10. Docker support
 
 ### Tier 3 — Future features (need clear demand)
-11. Slack/Telegram connectors
-12. Web UI
-13. Background task workspaces & disk persistence
-14. Image/document handling
-15. Session persistence across restarts
-16. Discord background task notifications
+10. Slack/Telegram connectors
+11. Background task workspaces & disk persistence
+12. Image/document handling
+13. Session persistence across restarts
+14. Discord background task notifications

@@ -1,0 +1,50 @@
+# Production override: adds Traefik reverse proxy with auto-TLS
+# Usage: docker compose -f docker-compose.yml -f docker-compose.traefik.yml up -d
+#
+# Required .env variables:
+#   DOMAIN=yourdomain.com
+#   ACME_EMAIL=you@example.com
+
+services:
+  octopal:
+    ports: !override []
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.octopal.rule=Host(`api.${DOMAIN}`)"
+      - "traefik.http.routers.octopal.entrypoints=websecure"
+      - "traefik.http.routers.octopal.tls.certresolver=letsencrypt"
+      - "traefik.http.services.octopal.loadbalancer.server.port=3847"
+
+  code-server:
+    ports: !override []
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.vault.rule=Host(`vault.${DOMAIN}`)"
+      - "traefik.http.routers.vault.entrypoints=websecure"
+      - "traefik.http.routers.vault.tls.certresolver=letsencrypt"
+      - "traefik.http.services.vault.loadbalancer.server.port=8443"
+
+  traefik:
+    image: traefik:v3
+    command:
+      - "--api.insecure=false"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - letsencrypt:/letsencrypt
+    networks:
+      - octopal-net
+    restart: unless-stopped
+
+volumes:
+  letsencrypt:

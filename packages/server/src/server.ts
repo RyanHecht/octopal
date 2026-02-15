@@ -33,6 +33,7 @@ export async function createServer({ config, host, port }: ServerOptions) {
       remoteUrl: config.vaultRemoteUrl,
     },
     configDir: config.configDir,
+    vaultBaseUrl: config.vaultBaseUrl,
   });
   await agent.init();
 
@@ -97,7 +98,7 @@ export async function createServer({ config, host, port }: ServerOptions) {
   await fastify.register(vaultRoutes(config, agent.vault, agent.para), { prefix: "/vault" });
 
   // Register WebSocket handler
-  registerWebSocket(fastify, config, agent, sessionStore, connectorRegistry);
+  registerWebSocket(fastify, config, agent, sessionStore, connectorRegistry, agent.vault);
 
   // Start Discord connector if configured
   if (config.discord?.botToken) {

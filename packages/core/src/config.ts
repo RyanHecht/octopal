@@ -37,6 +37,8 @@ export interface DiscordConfig {
 export interface OctopalUserConfig {
   /** Git remote URL for the vault repo */
   vaultRemoteUrl?: string;
+  /** Base URL for the web vault viewer (e.g., https://vault.example.com) */
+  vaultBaseUrl?: string;
   /** Server configuration */
   server?: ServerConfig;
   /** Scheduler configuration */
@@ -51,6 +53,7 @@ export interface ResolvedConfig {
   configPath: string;
   vaultPath: string;
   vaultRemoteUrl?: string;
+  vaultBaseUrl?: string;
   server: {
     port: number;
     passwordHash?: string;
@@ -69,6 +72,10 @@ export const CONFIG_TEMPLATE = `# Octopal configuration
 
 # Git remote URL for your PARA vault
 # vaultRemoteUrl = "https://github.com/youruser/octopal-vault.git"
+
+# Base URL for the web vault viewer (code-server)
+# When set, the agent formats note references as clickable links
+# vaultBaseUrl = "https://vault.example.com"
 
 [server]
 # Port for the octopal daemon (default: 3847)
@@ -119,8 +126,17 @@ export async function loadConfig(): Promise<ResolvedConfig> {
   if (process.env.OCTOPAL_VAULT_REMOTE) {
     base.vaultRemoteUrl = process.env.OCTOPAL_VAULT_REMOTE;
   }
+  if (process.env.OCTOPAL_VAULT_BASE_URL) {
+    base.vaultBaseUrl = process.env.OCTOPAL_VAULT_BASE_URL;
+  }
   if (process.env.OCTOPAL_SERVER_PORT) {
     base.server.port = parseInt(process.env.OCTOPAL_SERVER_PORT, 10);
+  }
+  if (process.env.OCTOPAL_PASSWORD_HASH) {
+    base.server.passwordHash = process.env.OCTOPAL_PASSWORD_HASH;
+  }
+  if (process.env.OCTOPAL_TOKEN_SECRET) {
+    base.server.tokenSecret = process.env.OCTOPAL_TOKEN_SECRET;
   }
 
   // Discord env var overrides
@@ -144,6 +160,9 @@ export async function loadConfig(): Promise<ResolvedConfig> {
     } else if ((saved as Record<string, unknown>).vaultRepo) {
       // Backward compat: old configs may have vaultRepo instead
       base.vaultRemoteUrl ??= `https://github.com/${(saved as Record<string, unknown>).vaultRepo}.git`;
+    }
+    if (saved.vaultBaseUrl) {
+      base.vaultBaseUrl ??= saved.vaultBaseUrl;
     }
     if (saved.server) {
       base.server.port = saved.server.port ?? base.server.port;

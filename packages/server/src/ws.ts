@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import type { WebSocket } from "ws";
-import { verifyToken, type TokenPayload, type ResolvedConfig, type OctopalAgent } from "@octopal/core";
+import { verifyToken, transformWikilinks, type TokenPayload, type ResolvedConfig, type OctopalAgent, type VaultManager } from "@octopal/core";
 import type { ClientMessage } from "./protocol.js";
 import type { SessionStore } from "./sessions.js";
 import type { ConnectorRegistry } from "./connector-registry.js";
@@ -12,6 +12,7 @@ export function registerWebSocket(
   agent: OctopalAgent,
   sessionStore: SessionStore,
   connectorRegistry: ConnectorRegistry,
+  vault: VaultManager,
 ) {
 
   fastify.get("/ws", { websocket: true }, (socket: WebSocket, request) => {
@@ -50,7 +51,7 @@ export function registerWebSocket(
           break;
 
         case "chat.send":
-          handleChatSend(socket, sessionStore, authPayload!, msg.sessionId, msg.text);
+          handleChatSend(socket, sessionStore, config, authPayload!, msg.sessionId, msg.text);
           break;
 
         case "connector.register":
@@ -63,12 +64,17 @@ export function registerWebSocket(
             socket.send(JSON.stringify({ type: "error", error: "Not registered as a connector" }));
             return;
           }
-          handleConnectorMessage(socket, sessionStore, reg.name, msg.channelId, msg.text);
+          handleConnectorMessage(socket, sessionStore, config, reg.name, msg.channelId, msg.text);
           break;
         }
 
         case "connector.response": {
           connectorRegistry.handleResponse(msg.requestId, msg.result, msg.error);
+          break;
+        }
+
+        case "vault.files_changed": {
+          handleVaultFilesChanged(socket, vault, msg.paths);
           break;
         }
 
@@ -83,9 +89,16 @@ export function registerWebSocket(
   });
 }
 
+/** Transform wikilinks to URLs if vault base URL is configured */
+function maybeTransformLinks(text: string, config: ResolvedConfig): string {
+  if (!config.vaultBaseUrl || !text) return text;
+  return transformWikilinks(text, config.vaultBaseUrl);
+}
+
 async function handleChatSend(
   socket: WebSocket,
   sessionStore: SessionStore,
+  config: ResolvedConfig,
   auth: TokenPayload,
   requestedSessionId: string | undefined,
   text: string,
@@ -108,7 +121,7 @@ async function handleChatSend(
         socket.send(JSON.stringify({
           type: "chat.delta",
           sessionId,
-          content: event.data.deltaContent ?? "",
+          content: maybeTransformLinks(event.data.deltaContent ?? "", config),
         }));
       }
     };
@@ -124,7 +137,7 @@ async function handleChatSend(
       }));
     }
 
-    const responseText = response?.data?.content ?? "";
+    const responseText = maybeTransformLinks(response?.data?.content ?? "", config);
 
     if (socket.readyState === socket.OPEN) {
       socket.send(JSON.stringify({
@@ -183,6 +196,7 @@ function handleConnectorRegister(
 async function handleConnectorMessage(
   socket: WebSocket,
   sessionStore: SessionStore,
+  config: ResolvedConfig,
   connectorName: string,
   channelId: string,
   text: string,
@@ -200,7 +214,7 @@ async function handleConnectorMessage(
         socket.send(JSON.stringify({
           type: "chat.delta",
           sessionId,
-          content: event.data.deltaContent ?? "",
+          content: maybeTransformLinks(event.data.deltaContent ?? "", config),
         }));
       }
     };
@@ -213,7 +227,7 @@ async function handleConnectorMessage(
       console.log(`[${connectorName}] Session ${sessionId} was recovered after expiry`);
     }
 
-    const responseText = response?.data?.content ?? "";
+    const responseText = maybeTransformLinks(response?.data?.content ?? "", config);
 
     if (socket.readyState === socket.OPEN) {
       socket.send(JSON.stringify({
@@ -230,6 +244,36 @@ async function handleConnectorMessage(
         sessionId,
         error: message,
       }));
+    }
+  }
+}
+
+async function handleVaultFilesChanged(
+  socket: WebSocket,
+  vault: VaultManager,
+  paths: string[] | undefined,
+) {
+  if (!paths?.length) return;
+
+  try {
+    const hasChanges = await vault.hasUncommittedChanges();
+    if (!hasChanges) return;
+
+    const summary = paths.length === 1
+      ? `User edit: ${paths[0]}`
+      : `User edit: ${paths.length} files (${paths.slice(0, 3).join(", ")}${paths.length > 3 ? ", ..." : ""})`;
+
+    await vault.commitAndPush(summary);
+    console.log(`[ws] Vault changes committed: ${summary}`);
+
+    if (socket.readyState === socket.OPEN) {
+      socket.send(JSON.stringify({ type: "vault.committed", paths }));
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[ws] Failed to commit vault changes: ${message}`);
+    if (socket.readyState === socket.OPEN) {
+      socket.send(JSON.stringify({ type: "vault.error", error: message }));
     }
   }
 }
