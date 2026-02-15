@@ -25,7 +25,7 @@ export function chatRoutes(config: ResolvedConfig, sessionStore: SessionStore) {
         const { response, recovered } = await sessionStore.sendOrRecover(sessionId, text.trim());
         let responseText = response?.data?.content ?? "";
         if (config.vaultBaseUrl && responseText) {
-          responseText = transformWikilinks(responseText, config.vaultBaseUrl);
+          responseText = transformWikilinks(responseText, config.vaultBaseUrl, undefined, config.vaultPathPrefix);
         }
 
         return { sessionId, text: responseText, recovered };

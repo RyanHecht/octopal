@@ -11,6 +11,8 @@ export interface OctopalConfig {
   configDir: string;
   /** Base URL for the web vault viewer, when available */
   vaultBaseUrl?: string;
+  /** Absolute path to the vault inside the web viewer (e.g. /home/coder/vault) */
+  vaultPathPrefix?: string;
 }
 
 export interface NoteMetadata {

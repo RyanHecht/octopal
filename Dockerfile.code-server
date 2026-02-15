@@ -1,3 +1,14 @@
+# Stage 1: Build the Octopal VS Code extension
+FROM node:24-slim AS ext-builder
+WORKDIR /ext
+COPY extensions/octopal-vscode/package.json extensions/octopal-vscode/package-lock.json ./
+RUN npm ci
+COPY extensions/octopal-vscode/src/ ./src/
+COPY extensions/octopal-vscode/tsconfig.json ./
+RUN npx esbuild src/extension.ts --bundle --outfile=dist/extension.js \
+      --external:vscode --format=cjs --platform=node --sourcemap
+
+# Stage 2: code-server with the extension baked in
 FROM codercom/code-server:latest
 
 # PWA branding: override manifest values
@@ -8,6 +19,10 @@ ENV CS_DISABLE_GETTING_STARTED_OVERRIDE=1
 RUN code-server --install-extension foam.foam-vscode 2>/dev/null || true && \
     code-server --install-extension yzhang.markdown-all-in-one 2>/dev/null || true && \
     code-server --install-extension bierner.markdown-preview-github-styles 2>/dev/null || true
+
+# Stage the Octopal extension (copied into the data volume at startup)
+COPY --from=ext-builder /ext/package.json /opt/octopal-extension/package.json
+COPY --from=ext-builder /ext/dist/ /opt/octopal-extension/dist/
 
 # Copy startup script that patches PWA manifest
 COPY --chmod=755 scripts/code-server-startup.sh /usr/local/bin/octopal-startup.sh

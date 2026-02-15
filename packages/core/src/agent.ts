@@ -4,6 +4,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { VaultManager } from "./vault.js";
+import { buildVaultFileUrl } from "./wikilinks.js";
 import { ParaManager } from "./para.js";
 import { TaskManager } from "./tasks.js";
 import { SessionLogger } from "./session-logger.js";
@@ -106,7 +107,8 @@ export class OctopalAgent {
 
     // Inject web viewer context when available
     if (this.config.vaultBaseUrl) {
-      promptContent += `\n\n## Web Viewer\nA web-based vault viewer is available at ${this.config.vaultBaseUrl}. When referencing vault notes, format them as clickable markdown links: [Note Title](${this.config.vaultBaseUrl}/?file=path/to/Note.md) instead of [[wikilinks]]. This lets users click through to view the note directly. For notes you're unsure about the path for, use [[wikilinks]] as usual — they'll be resolved automatically.`;
+      const exampleUrl = buildVaultFileUrl(this.config.vaultBaseUrl, "path/to/Note.md", this.config.vaultPathPrefix);
+      promptContent += `\n\n## Web Viewer\nA web-based vault viewer is available at ${this.config.vaultBaseUrl}. When referencing vault notes, format them as clickable markdown links: [Note Title](${exampleUrl}) instead of [[wikilinks]]. This lets users click through to view the note directly. For notes you're unsure about the path for, use [[wikilinks]] as usual — they'll be resolved automatically.`;
     }
 
     // Build hooks for automatic knowledge retrieval and ingestion

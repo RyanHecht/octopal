@@ -92,7 +92,7 @@ export function registerWebSocket(
 /** Transform wikilinks to URLs if vault base URL is configured */
 function maybeTransformLinks(text: string, config: ResolvedConfig): string {
   if (!config.vaultBaseUrl || !text) return text;
-  return transformWikilinks(text, config.vaultBaseUrl);
+  return transformWikilinks(text, config.vaultBaseUrl, undefined, config.vaultPathPrefix);
 }
 
 async function handleChatSend(

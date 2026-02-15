@@ -39,6 +39,8 @@ export interface OctopalUserConfig {
   vaultRemoteUrl?: string;
   /** Base URL for the web vault viewer (e.g., https://vault.example.com) */
   vaultBaseUrl?: string;
+  /** Absolute path to the vault inside the web viewer (e.g., /home/coder/vault) */
+  vaultPathPrefix?: string;
   /** Server configuration */
   server?: ServerConfig;
   /** Scheduler configuration */
@@ -54,6 +56,7 @@ export interface ResolvedConfig {
   vaultPath: string;
   vaultRemoteUrl?: string;
   vaultBaseUrl?: string;
+  vaultPathPrefix?: string;
   server: {
     port: number;
     passwordHash?: string;
@@ -76,6 +79,10 @@ export const CONFIG_TEMPLATE = `# Octopal configuration
 # Base URL for the web vault viewer (code-server)
 # When set, the agent formats note references as clickable links
 # vaultBaseUrl = "https://vault.example.com"
+
+# Absolute path to the vault inside the web viewer
+# Required for code-server links to open the correct file
+# vaultPathPrefix = "/home/coder/vault"
 
 [server]
 # Port for the octopal daemon (default: 3847)
@@ -129,6 +136,9 @@ export async function loadConfig(): Promise<ResolvedConfig> {
   if (process.env.OCTOPAL_VAULT_BASE_URL) {
     base.vaultBaseUrl = process.env.OCTOPAL_VAULT_BASE_URL;
   }
+  if (process.env.OCTOPAL_VAULT_PATH_PREFIX) {
+    base.vaultPathPrefix = process.env.OCTOPAL_VAULT_PATH_PREFIX;
+  }
   if (process.env.OCTOPAL_SERVER_PORT) {
     base.server.port = parseInt(process.env.OCTOPAL_SERVER_PORT, 10);
   }
@@ -163,6 +173,9 @@ export async function loadConfig(): Promise<ResolvedConfig> {
     }
     if (saved.vaultBaseUrl) {
       base.vaultBaseUrl ??= saved.vaultBaseUrl;
+    }
+    if (saved.vaultPathPrefix) {
+      base.vaultPathPrefix ??= saved.vaultPathPrefix;
     }
     if (saved.server) {
       base.server.port = saved.server.port ?? base.server.port;

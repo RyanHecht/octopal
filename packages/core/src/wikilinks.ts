@@ -14,6 +14,7 @@ export function transformWikilinks(
   text: string,
   baseUrl: string,
   fileIndex?: Set<string>,
+  vaultPathPrefix?: string,
 ): string {
   // Match [[target]] or [[target|display]]
   return text.replace(
@@ -21,10 +22,24 @@ export function transformWikilinks(
     (_match, target: string, display?: string) => {
       const label = display ?? target;
       const resolved = resolveNotePath(target.trim(), fileIndex);
-      const url = `${baseUrl}/?file=${encodeURIComponent(resolved)}`;
+      const url = buildVaultFileUrl(baseUrl, resolved, vaultPathPrefix);
       return `[${label}](${url})`;
     },
   );
+}
+
+/**
+ * Build a URL that opens a vault file in the web viewer (code-server).
+ * Encodes each path segment individually so `/` separators are preserved.
+ */
+export function buildVaultFileUrl(
+  baseUrl: string,
+  filePath: string,
+  vaultPathPrefix?: string,
+): string {
+  const prefix = vaultPathPrefix ? `${vaultPathPrefix.replace(/\/+$/, "")}/` : "";
+  const encoded = filePath.split("/").map(encodeURIComponent).join("/");
+  return `${baseUrl}/?file=${prefix}${encoded}`;
 }
 
 /**
