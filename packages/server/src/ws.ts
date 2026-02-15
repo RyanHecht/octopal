@@ -168,7 +168,7 @@ function handleConnectorRegister(
   metadata?: Record<string, unknown>,
 ) {
   if (!auth.scopes.includes("connector")) {
-    socket.send(JSON.stringify({ type: "error", error: "Missing connector scope" }));
+    socket.send(JSON.stringify({ type: "error", error: 'Missing connector scope. Mint a token with scopes: ["chat", "read", "connector"]' }));
     return;
   }
 
