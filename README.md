@@ -89,7 +89,7 @@ octopal/
 │   │       ├── skills.ts     # Skills list/create commands
 │   │       └── client.ts     # Daemon WebSocket client (dual-mode CLI)
 │   └── server/         # @octopal/server — daemon (central agent server)
-├── skills/             # Bundled skills
+├── builtin-skills/     # Bundled skills
 │   ├── para/           # PARA vault-organization skill (default)
 │   └── github/         # GitHub workflow conventions
 ├── vault-template/     # Starter template for a new vault
@@ -110,7 +110,7 @@ See the [wiki](wiki/) for detailed documentation:
 Octopal is extensible via **skills** — directories with a `SKILL.md` that inject instructions into the agent's prompt.
 
 **Three-tier skill resolution:**
-1. **Bundled** (`skills/`) — shipped with octopal (PARA, GitHub conventions)
+1. **Bundled** (`builtin-skills/`) — shipped with octopal (PARA, GitHub conventions)
 2. **Vault** (`<vault>/Meta/skills/`) — synced via git, editable in Obsidian
 3. **Local** (`~/.octopal/skills/`) — user-installed
 

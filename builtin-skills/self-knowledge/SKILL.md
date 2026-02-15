@@ -29,7 +29,7 @@ When the user asks about your capabilities, features, commands, configuration, o
    - **Connectors** — Discord, remote connectors
    - **Contributing** — development setup and extension guide
 
-2. **Search the codebase** — For implementation details, search the source code in the `RyanHecht/octopal` repository. Tools are defined in `packages/core/src/tools.ts`, skills in `skills/`, and the CLI in `packages/cli/src/`.
+2. **Search the codebase** — For implementation details, search the source code in the `RyanHecht/octopal` repository. Tools are defined in `packages/core/src/tools.ts`, skills in `builtin-skills/`, and the CLI in `packages/cli/src/`.
 
 3. **Answer from what you find** — Base your answer on the documentation and code, not assumptions. If you can't find something, say so.
 

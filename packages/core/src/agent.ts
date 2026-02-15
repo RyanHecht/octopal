@@ -134,7 +134,7 @@ export class OctopalAgent {
       },
       hooks,
       skillDirectories: [
-        path.resolve(__dirname, "../../../skills"),                // bundled (para, etc.)
+        path.resolve(__dirname, "../../../builtin-skills"),         // bundled (para, etc.)
         path.join(this.vault.root, "Meta/skills"),                 // vault skills
         path.join(this.config.configDir, "skills"),               // local (~/.octopal/skills/)
       ],

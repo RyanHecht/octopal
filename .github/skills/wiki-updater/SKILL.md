@@ -109,7 +109,7 @@ git diff HEAD~10..HEAD      # Last 10 commits
    | `packages/server/src/routes/*.ts` | Daemon-and-API.md |
    | `packages/connector-discord/**` | Connectors.md |
    | `packages/connector/**` | Connectors.md |
-   | `skills/**` | Skills-System.md |
+   | `builtin-skills/**` | Skills-System.md |
    | `package.json` | Getting-Started.md, Architecture.md |
    | `ARCHITECTURE.md` | _(pointer file — no content to sync)_ |
    | `README.md` | Home.md, Getting-Started.md |

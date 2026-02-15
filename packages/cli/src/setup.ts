@@ -201,7 +201,7 @@ async function main() {
       content: `${SETUP_PROMPT}\n\n## Current Vault Structure\n\`\`\`\n${vaultStructure}\n\`\`\`\n\nToday's date: ${new Date().toISOString().slice(0, 10)}`,
     },
     skillDirectories: [
-      path.resolve(import.meta.dirname, "../../..", "skills"),  // bundled (para, etc.)
+      path.resolve(import.meta.dirname, "../../..", "builtin-skills"),  // bundled (para, etc.)
     ],
     onUserInputRequest: async (request) => {
       console.log();

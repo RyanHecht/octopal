@@ -40,7 +40,7 @@ export async function listSkills(config: ResolvedConfig): Promise<void> {
   const bundledDir = path.resolve(
     new URL(".", import.meta.url).pathname,
     "../../..",
-    "skills",
+    "builtin-skills",
   );
   const vaultDir = path.join(config.vaultPath, "Meta/skills");
   const localDir = path.join(config.configDir, "skills");
