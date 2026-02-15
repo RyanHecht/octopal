@@ -72,29 +72,6 @@ export class QmdSearch {
   }
 
   /**
-   * Install QMD globally via bun.
-   * Returns true if installation succeeded.
-   */
-  static async install(): Promise<boolean> {
-    try {
-      await exec("bun", ["install", "-g", "@tobi/qmd"], { timeout: 120_000 });
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  /** Check if bun is available on PATH */
-  static async isBunAvailable(): Promise<boolean> {
-    try {
-      await exec("bun", ["--version"], { timeout: 5000 });
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  /**
    * BM25 keyword search across specified collections.
    * Fast and suitable for hook-based auto-retrieval.
    */

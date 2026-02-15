@@ -16,7 +16,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@github/copilot-sdk": "file:../../vendor/github-copilot-sdk-0.1.8.tgz",
+    "@github/copilot-sdk": "^0.1.23",
     "smol-toml": "^1.6.0",
     "zod": "^4.3.6"
   }

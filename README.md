@@ -12,6 +12,8 @@ Ships with [PARA method](https://fortelabs.com/blog/para/) support out of the bo
 - **GitHub CLI (`gh`)** — [install](https://cli.github.com/), then `gh auth login`
 - **GitHub Copilot** access (authenticated via `gh` CLI)
 
+> **Optional**: Install [Bun](https://bun.sh) and [QMD](https://github.com/tobi/qmd) for semantic vault search: `bun install -g https://github.com/tobi/qmd`
+
 ### Setup
 
 ```bash
@@ -31,7 +33,7 @@ node packages/cli/dist/index.js setup
 # → Pre-populates your vault with projects, areas, and tasks
 ```
 
-Config is saved to `~/.octopal/config.json`. The vault lives at `~/.octopal/vault/`.
+Config is saved to `~/.octopal/config.toml`. The vault lives at `~/.octopal/vault/`.
 
 ### Usage
 

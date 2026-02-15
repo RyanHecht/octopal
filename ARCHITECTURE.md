@@ -338,6 +338,7 @@ Vault tools built with the Copilot SDK's `defineTool()`. Key exports:
 
 Notable tools:
 - `analyze_input` — runs the two-phase preprocessor (deterministic + semantic matching) against the knowledge base. The PARA skill instructs the agent to call this before processing raw input.
+- `search_vault` — unified vault search with scope parameter. Uses QMD (BM25/semantic/hybrid) when available, falls back to brute-force substring matching. See [QMD Search](#qmtts--qmd-search-engine) below.
 - `read_note`, `write_note`, `append_to_note` — vault file operations
 - `save_knowledge`, `lookup_knowledge` — knowledge base management
 - `commit_changes` — git commit and push
@@ -374,6 +375,46 @@ Runs before the main agent during ingest. Phase 1 (deterministic) matches known 
 
 **Key exports:**
 - `runPreprocessor(client, vault, rawInput)` — Returns matched knowledge entries, high-confidence new aliases, low-confidence triage items, and new entity candidates
+
+### `qmd.ts` — QMD Search Engine (Optional)
+
+Wraps the [QMD](https://github.com/tobi/qmd) CLI for vault search. QMD is an **optional** external tool that provides BM25 full-text search, vector semantic search, and LLM-based re-ranking. Without it, vault search falls back to brute-force substring matching (see `vault.search()`).
+
+**Install:** `bun install -g https://github.com/tobi/qmd` (requires [Bun](https://bun.sh))
+
+**What QMD adds over the substring fallback:**
+- Ranked results (BM25 scoring) instead of unranked line matches
+- Semantic search — "project management" finds notes about "task coordination"
+- Hybrid deep search with LLM re-ranking for complex queries
+- Automatic context retrieval via the `onUserPromptSubmitted` hook (without QMD, the agent has no automatic vault awareness)
+
+**Key exports:**
+- `QmdSearch` — class wrapping the QMD CLI. All methods return empty results if QMD is not installed (graceful degradation).
+  - `isAvailable()` — checks if `qmd` is on PATH
+  - `setup()` — creates three QMD collections: `knowledge`, `notes`, `sessions`
+  - `search(query, collections?)` — BM25 keyword search (fast, used by auto-retrieval hook)
+  - `deepSearch(query, collections?)` — hybrid search with LLM re-ranking (slower, used by `search_vault` with `scope: "deep"`)
+  - `reindex()` — triggers background embedding generation
+- `scopeToCollections(scope)` — maps `search_vault` scope parameter to QMD collection names
+
+**Collections:**
+| Collection | Path | Purpose |
+|------------|------|---------|
+| `knowledge` | `Resources/Knowledge/` | People, organizations, terms |
+| `notes` | vault root | Projects, areas, resources |
+| `sessions` | `Resources/Session Logs/` | Past conversation logs |
+
+### `hooks.ts` — Session Hooks
+
+Hooks that run automatically during agent sessions, built with the Copilot SDK's hook system.
+
+**Key exports:**
+- `buildSessionHooks({ client, vault, qmd, knowledgeOps, logger })` — returns a hooks object for `createSession()`
+
+**Hooks:**
+- `onUserPromptSubmitted` — runs before every user message. If QMD is available, searches the vault for relevant context and injects it. Also runs the knowledge preprocessor for entity detection. Without QMD, only the preprocessor runs.
+- `onPostToolUse` — runs after tool calls. Detects knowledge entities in tool results.
+- `onSessionEnd` — commits any pending alias updates and generates a knowledge summary.
 
 ### `schedule-types.ts` — Schedule Types & Cron Parser
 
@@ -945,10 +986,12 @@ npm run clean
 
 ### Upgrading the Copilot SDK
 
-1. Get the new tarball: `cd ~/Documents/copilot-sdk/nodejs && git pull && npm install && npm run build && npm pack`
-2. Copy it: `cp github-copilot-sdk-*.tgz /path/to/octopal/vendor/`
-3. Update the version in `packages/core/package.json`
-4. Run `npm install && npm run build`
+The SDK is a normal npm dependency. To upgrade:
+
+```bash
+npm update @github/copilot-sdk
+npm run build
+```
 
 ### Testing with the test agent
 
