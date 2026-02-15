@@ -15,7 +15,7 @@ Usage:
 
 Options:
   --port <port>          Port to listen on (default: 3847)
-  --host <host>          Host to bind to (default: 127.0.0.1)
+  --host <host>          Host to bind to (default: 0.0.0.0)
   --set-password         Set or change the admin password, then exit
   --help                 Show this help
     `.trim());
@@ -79,7 +79,7 @@ Options:
 
   // Parse port/host from args
   let port = config.server.port;
-  let host = "127.0.0.1";
+  let host = "0.0.0.0";
 
   const portIdx = args.indexOf("--port");
   if (portIdx !== -1 && args[portIdx + 1]) {

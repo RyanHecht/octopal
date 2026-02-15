@@ -157,7 +157,7 @@ export async function createServer({ config, host, port }: ServerOptions) {
   });
 
   const listenPort = port ?? config.server.port;
-  const listenHost = host ?? "127.0.0.1";
+  const listenHost = host ?? "0.0.0.0";
 
   await fastify.listen({ port: listenPort, host: listenHost });
 
