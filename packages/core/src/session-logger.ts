@@ -1,5 +1,6 @@
 import type { CopilotSession, SessionEvent } from "@github/copilot-sdk";
 import type { VaultManager } from "./vault.js";
+import { KNOWLEDGE_TOOLS } from "./hooks.js";
 
 const MAX_TOOL_RESULT_LENGTH = 2000;
 const LOG_DIR = "Resources/Session Logs";
@@ -9,6 +10,11 @@ interface ToolCallRecord {
   args?: unknown;
   result?: string;
   success?: boolean;
+}
+
+interface KnowledgeLogEntry {
+  tool: string;
+  summary: string;
 }
 
 /**
@@ -26,6 +32,9 @@ export class SessionLogger {
   private assistantMessages: string[] = [];
   private toolCalls: ToolCallRecord[] = [];
   private toolCallMap = new Map<string, ToolCallRecord>();
+
+  // Session-wide knowledge operation tracking
+  private knowledgeLog: KnowledgeLogEntry[] = [];
 
   constructor(
     private vault: VaultManager,
@@ -71,6 +80,27 @@ export class SessionLogger {
     ];
 
     return () => unsubs.forEach((fn) => fn());
+  }
+
+  /**
+   * Write a "Knowledge Changes" summary section at the end of the session log.
+   * Call this on session end.
+   */
+  async writeKnowledgeSummary(): Promise<void> {
+    if (!this.fileCreated || this.knowledgeLog.length === 0) return;
+
+    const lines: string[] = [];
+    lines.push("## 🧠 Knowledge Changes");
+    lines.push("");
+    for (const entry of this.knowledgeLog) {
+      lines.push(`- ${entry.summary}`);
+    }
+    lines.push("");
+
+    await this.vault.appendToFile(this.filePath, lines.join("\n"));
+    await this.vault.commitAndPush(
+      `session log: ${this.sessionId} knowledge summary`,
+    );
   }
 
   private async ensureFile(): Promise<void> {
@@ -124,13 +154,22 @@ export class SessionLogger {
       lines.push("");
       for (const tc of this.toolCalls) {
         const argsStr = tc.args ? formatArgs(tc.args) : "";
-        const icon = tc.success === false ? "❌" : "✅";
+        const isKnowledge = KNOWLEDGE_TOOLS.has(tc.name);
+        const icon = tc.success === false ? "❌" : isKnowledge ? "🧠" : "✅";
         let line = `- ${icon} \`${tc.name}(${argsStr})\``;
         if (tc.result) {
           const truncated = truncate(tc.result, MAX_TOOL_RESULT_LENGTH);
           line += "\n  > " + truncated.replace(/\n/g, "\n  > ");
         }
         lines.push(line);
+
+        // Track knowledge operations for session summary
+        if (isKnowledge && tc.success !== false) {
+          this.knowledgeLog.push({
+            tool: tc.name,
+            summary: summarizeKnowledgeOp(tc.name, tc.args, tc.result),
+          });
+        }
       }
       lines.push("");
     }
@@ -172,4 +211,21 @@ function formatArgs(args: unknown): string {
 function truncate(text: string, max: number): string {
   if (text.length <= max) return text;
   return text.slice(0, max) + "\n…(truncated)";
+}
+
+/** Generate a one-line summary of a knowledge operation */
+function summarizeKnowledgeOp(tool: string, args: unknown, result?: string): string {
+  const a = (args && typeof args === "object" ? args : {}) as Record<string, unknown>;
+  switch (tool) {
+    case "save_knowledge":
+      return `Saved ${a.category ?? "entry"}: ${a.name ?? "unknown"}`;
+    case "search_vault":
+      return `Searched vault: "${a.query ?? ""}" (scope: ${a.scope ?? "all"})`;
+    case "analyze_input":
+      return `Analyzed input (${typeof a.text === "string" ? a.text.length : 0} chars)`;
+    case "add_triage_item":
+      return `Triaged: ${a.description ?? "unknown"}`;
+    default:
+      return `${tool}(${formatArgs(args)})`;
+  }
 }

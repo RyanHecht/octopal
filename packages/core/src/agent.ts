@@ -9,6 +9,8 @@ import { TaskManager } from "./tasks.js";
 import { SessionLogger } from "./session-logger.js";
 import { buildVaultTools } from "./tools.js";
 import { SYSTEM_PROMPT } from "./prompts.js";
+import { QmdSearch } from "./qmd.js";
+import { buildSessionHooks, type KnowledgeOperation } from "./hooks.js";
 import type { OctopalConfig } from "./types.js";
 import type { ConnectorRegistryLike } from "./types.js";
 import type { Scheduler } from "./scheduler.js";
@@ -19,6 +21,7 @@ export class OctopalAgent {
   readonly client: CopilotClient;
   readonly vault: VaultManager;
   readonly para: ParaManager;
+  readonly qmd: QmdSearch;
   private tasks: TaskManager;
   private scheduler?: Scheduler;
   private connectors?: ConnectorRegistryLike;
@@ -30,6 +33,7 @@ export class OctopalAgent {
     this.vault = new VaultManager(config.vault);
     this.para = new ParaManager(this.vault);
     this.tasks = new TaskManager();
+    this.qmd = new QmdSearch(config.vault.localPath);
   }
 
   /** Attach the scheduler so it's available to agent tools */
@@ -98,6 +102,24 @@ export class OctopalAgent {
       }
     }
 
+    // Build hooks for automatic knowledge retrieval and ingestion
+    const knowledgeOps: KnowledgeOperation[] = [];
+
+    // Create session logger early so hooks can reference it
+    let logger: SessionLogger | undefined;
+    if (options?.sessionLogging !== false) {
+      const logSessionId = options?.sessionId ?? `session-${Date.now()}`;
+      logger = new SessionLogger(this.vault, logSessionId);
+    }
+
+    const hooks = buildSessionHooks({
+      client: this.client,
+      vault: this.vault,
+      qmd: this.qmd,
+      knowledgeOps,
+      logger,
+    });
+
     const session = await this.client.createSession({
       model: "claude-sonnet-4",
       streaming: true,
@@ -106,6 +128,7 @@ export class OctopalAgent {
         mode: "append",
         content: promptContent,
       },
+      hooks,
       skillDirectories: [
         path.resolve(__dirname, "../../../skills"),                // bundled (para, etc.)
         path.join(this.vault.root, "Meta/skills"),                 // vault skills
@@ -122,6 +145,7 @@ export class OctopalAgent {
           client: this.client,
           scheduler: this.scheduler,
           connectors: this.connectors,
+          qmd: this.qmd,
         }),
         ...(options?.extraTools ?? []),
       ],
@@ -131,10 +155,8 @@ export class OctopalAgent {
       session.on(options.onEvent);
     }
 
-    // Attach session logger unless explicitly disabled
-    if (options?.sessionLogging !== false) {
-      const logSessionId = options?.sessionId ?? session.sessionId ?? "unknown";
-      const logger = new SessionLogger(this.vault, logSessionId);
+    // Attach session logger
+    if (logger) {
       logger.attach(session);
     }
 

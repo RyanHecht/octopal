@@ -14,6 +14,7 @@ import {
   loadConfig,
   saveConfig,
   SETUP_PROMPT,
+  QmdSearch,
 } from "@octopal/core";
 
 const exec = promisify(execFile);
@@ -165,7 +166,34 @@ async function main() {
     // vault-template not found — skip
   }
 
-  console.log("Vault structure created. Starting interactive setup...\n");
+  console.log("Vault structure created. Setting up search engine...\n");
+
+  // Set up QMD for vault search
+  if (await QmdSearch.isBunAvailable()) {
+    const qmdAvailable = await new QmdSearch(config.vaultPath).isAvailable();
+    if (!qmdAvailable) {
+      console.log("Installing QMD search engine...");
+      const installed = await QmdSearch.install();
+      if (installed) {
+        console.log("✓ QMD installed");
+      } else {
+        console.log("⚠ QMD installation failed — vault search will use basic text matching");
+      }
+    }
+
+    const qmd = new QmdSearch(config.vaultPath);
+    if (await qmd.isAvailable()) {
+      console.log("Setting up vault search collections...");
+      await qmd.setup();
+      qmd.reindex();
+      console.log("✓ Search engine configured\n");
+    }
+  } else {
+    console.log("⚠ Bun runtime not found — QMD search engine not available.");
+    console.log("  Install Bun (https://bun.sh) and run 'octopal setup' again for semantic search.\n");
+  }
+
+  console.log("Starting interactive setup...\n");
   console.log("─".repeat(60));
   console.log();
 

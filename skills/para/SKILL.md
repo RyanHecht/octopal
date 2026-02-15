@@ -23,15 +23,16 @@ This skill defines how the knowledge vault is organized using the PARA method.
 
 When processing notes, brain dumps, transcripts, or other raw input:
 
-1. **Call `analyze_input` first** with the raw text to identify relevant knowledge context, uncertain associations, and new entities
+1. Relevant knowledge context is **automatically provided** — matched knowledge entries, detected knowledge gaps, and related vault notes are injected before you see the message. Use this context to inform your processing.
 2. Read the current vault structure to understand what projects/areas already exist
-3. Use the analysis results to inform your processing — reference matched knowledge, handle triage items, create new entity entries
-4. Create or update notes in the appropriate location, with wikilinks to knowledge entries
-5. Extract actionable items and create tasks using Obsidian Tasks format
-6. Save newly discovered people, organizations, or terms as knowledge entries using `save_knowledge`
-7. For uncertain associations, use ⚠️ before the wikilink and call `add_triage_item`
-8. Write a journal entry to `Resources/Knowledge/Journal/` documenting your decisions
-9. **Always commit changes** to the vault when done — this is critical
+3. Create or update notes in the appropriate location, with wikilinks to knowledge entries
+4. Extract actionable items and create tasks using Obsidian Tasks format
+5. Save newly discovered people, organizations, or terms as knowledge entries using `save_knowledge`
+6. For uncertain associations, use ⚠️ before the wikilink and call `add_triage_item`
+7. Write a journal entry to `Resources/Knowledge/Journal/` documenting your decisions
+8. **Always commit changes** to the vault when done — this is critical
+
+For longer or pasted text that wasn't part of the original prompt, you can manually call `analyze_input` to run entity detection on it.
 
 ## Knowledge Links
 

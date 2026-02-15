@@ -9,6 +9,7 @@ import { runPreprocessor } from "./preprocessor.js";
 import type { Scheduler } from "./scheduler.js";
 import { toCron } from "./schedule-types.js";
 import type { ConnectorRegistryLike } from "./types.js";
+import { QmdSearch, scopeToCollections, type SearchScope } from "./qmd.js";
 
 export interface ToolDeps {
   vault: VaultManager;
@@ -17,10 +18,11 @@ export interface ToolDeps {
   client: CopilotClient;
   scheduler?: Scheduler;
   connectors?: ConnectorRegistryLike;
+  qmd?: QmdSearch;
 }
 
 /** Build all vault tools as Copilot SDK Tool objects */
-export function buildVaultTools({ vault, para, tasks, client, scheduler, connectors }: ToolDeps) {
+export function buildVaultTools({ vault, para, tasks, client, scheduler, connectors, qmd }: ToolDeps) {
   return [
     defineTool("analyze_input", {
       description:
@@ -166,14 +168,53 @@ export function buildVaultTools({ vault, para, tasks, client, scheduler, connect
     }),
 
     defineTool("search_vault", {
-      description: "Full-text search across all markdown files in the vault",
+      description:
+        "Search across the vault using keyword or semantic search. Use the scope parameter to target specific areas: 'all' (default) searches knowledge entries + working notes, 'knowledge' for people/terms/organizations only, 'notes' for projects/areas/resources only, 'sessions' for past conversation logs, 'deep' for high-quality hybrid search with reranking (slower but better for complex queries).",
       parameters: z.object({
-        query: z.string().describe("Search query (case-insensitive)"),
+        query: z.string().describe("Search query — keywords or natural language"),
+        scope: z
+          .enum(["all", "knowledge", "notes", "sessions", "deep"])
+          .optional()
+          .describe("Search scope (default: 'all' = knowledge + notes)"),
       }),
-      handler: async ({ query }: any) => {
+      handler: async ({ query, scope: rawScope }: any) => {
+        const scope: SearchScope = rawScope ?? "all";
+
+        // Try QMD first
+        if (qmd && (await qmd.isAvailable())) {
+          const collections = scopeToCollections(scope);
+          const results =
+            scope === "deep"
+              ? await qmd.deepSearch(query, collections)
+              : await qmd.search(query, collections);
+
+          if (results.length === 0) return "No results found.";
+          return results
+            .map((r) => {
+              let line = `**${r.path}** (score: ${r.score.toFixed(2)})`;
+              if (r.snippet) line += `\n  ${r.snippet}`;
+              return line;
+            })
+            .join("\n\n");
+        }
+
+        // Fallback to substring search
         const results = await vault.search(query);
-        if (results.length === 0) return "No results found.";
-        return results
+        const filtered =
+          scope === "knowledge"
+            ? results.filter((r) => r.path.startsWith("Resources/Knowledge/"))
+            : scope === "sessions"
+              ? results.filter((r) => r.path.startsWith("Resources/Session Logs/"))
+              : scope === "notes"
+                ? results.filter(
+                    (r) =>
+                      !r.path.startsWith("Resources/Knowledge/") &&
+                      !r.path.startsWith("Resources/Session Logs/"),
+                  )
+                : results;
+
+        if (filtered.length === 0) return "No results found.";
+        return filtered
           .slice(0, 20)
           .map((r) => `${r.path}: ${r.line}`)
           .join("\n");
@@ -219,26 +260,9 @@ export function buildVaultTools({ vault, para, tasks, client, scheduler, connect
       }),
       handler: async ({ message }: any) => {
         await vault.commitAndPush(message);
+        // Trigger background reindex so search stays fresh
+        qmd?.reindex();
         return `Committed and pushed: ${message}`;
-      },
-    }),
-
-    defineTool("lookup_knowledge", {
-      description:
-        "Search the knowledge base (Resources/Knowledge/) for people, terms, or organizations. Use as a fallback if the provided knowledge context is missing something.",
-      parameters: z.object({
-        query: z.string().describe("Search query (case-insensitive)"),
-      }),
-      handler: async ({ query }: any) => {
-        const results = await vault.search(query);
-        const kbResults = results.filter((r) =>
-          r.path.startsWith("Resources/Knowledge/"),
-        );
-        if (kbResults.length === 0) return "No knowledge entries found.";
-        return kbResults
-          .slice(0, 15)
-          .map((r) => `${r.path}: ${r.line}`)
-          .join("\n");
       },
     }),
 

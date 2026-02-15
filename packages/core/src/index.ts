@@ -25,6 +25,10 @@ export type { KnowledgeEntry, KnowledgeIndex, KnowledgeCategory } from "./knowle
 export { SessionLogger } from "./session-logger.js";
 export { runPreprocessor } from "./preprocessor.js";
 export type { PreprocessorResult } from "./preprocessor.js";
+export { QmdSearch, scopeToCollections } from "./qmd.js";
+export type { QmdSearchResult, SearchScope } from "./qmd.js";
+export { buildSessionHooks, KNOWLEDGE_TOOLS } from "./hooks.js";
+export type { KnowledgeOperation } from "./hooks.js";
 export { loadConfig, saveConfig, isConfigured, CONFIG_TEMPLATE } from "./config.js";
 export type { OctopalUserConfig, ResolvedConfig, ServerConfig, SchedulerConfig, DiscordConfig } from "./config.js";
 export { Scheduler } from "./scheduler.js";
