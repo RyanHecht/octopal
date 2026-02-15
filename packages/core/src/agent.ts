@@ -11,6 +11,7 @@ import { buildVaultTools } from "./tools.js";
 import { SYSTEM_PROMPT } from "./prompts.js";
 import { QmdSearch } from "./qmd.js";
 import { buildSessionHooks, type KnowledgeOperation } from "./hooks.js";
+import { BackgroundTaskManager } from "./background-tasks.js";
 import type { OctopalConfig } from "./types.js";
 import type { ConnectorRegistryLike } from "./types.js";
 import type { Scheduler } from "./scheduler.js";
@@ -25,6 +26,7 @@ export class OctopalAgent {
   private tasks: TaskManager;
   private scheduler?: Scheduler;
   private connectors?: ConnectorRegistryLike;
+  readonly backgroundTasks = new BackgroundTaskManager();
 
   constructor(private config: OctopalConfig) {
     this.client = new CopilotClient({
@@ -118,6 +120,8 @@ export class OctopalAgent {
       qmd: this.qmd,
       knowledgeOps,
       logger,
+      backgroundTasks: this.backgroundTasks,
+      sessionId: options?.sessionId,
     });
 
     const session = await this.client.createSession({
@@ -146,6 +150,8 @@ export class OctopalAgent {
           scheduler: this.scheduler,
           connectors: this.connectors,
           qmd: this.qmd,
+          backgroundTasks: this.backgroundTasks,
+          getAgent: () => this,
         }),
         ...(options?.extraTools ?? []),
       ],

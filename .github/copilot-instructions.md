@@ -33,6 +33,17 @@ Set `OCTOPAL_HOME` to override the base directory (used by the test agent for is
 
 Use the `@test-octopal` agent (`.github/agents/test-octopal.agent.md`) to test in an isolated environment. It creates a temp dir, sets `OCTOPAL_HOME`, and exercises features without touching `~/.octopal/`.
 
+## Copilot SDK: Avoid unnecessary abstractions
+
+Octopal is built on `@github/copilot-sdk`. Before defining a custom abstraction, check whether the SDK already provides the capability natively. Prefer using SDK primitives directly (e.g., `SessionEvent`, `customAgents`, `SessionHooks`, `skillDirectories`) over wrapping them in Octopal-specific types.
+
+When proposing a plan that introduces a new abstraction layer:
+1. **State what the SDK already provides** for the use case
+2. **Explain why the SDK's built-in mechanism is insufficient** (or confirm it IS sufficient and skip the abstraction)
+3. **Note the alternative** — what would we use instead of the custom abstraction?
+
+This avoids building wrappers that drift from the SDK's actual capabilities and adds maintenance burden. The SDK evolves; our abstractions over it may not.
+
 ## Architecture
 
 See the [wiki](wiki/) for detailed documentation — [Architecture](wiki/Architecture.md), [Contributing](wiki/Contributing.md), and more.

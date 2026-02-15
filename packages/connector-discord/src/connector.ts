@@ -1,6 +1,8 @@
 import { Client, GatewayIntentBits, Partials, ChannelType, type Message } from "discord.js";
+import type { SessionEvent } from "@github/copilot-sdk";
 import type { DiscordConfig } from "@octopal/core";
 import { splitMessage } from "./messages.js";
+import { DiscordActivityRenderer, type ActivityChannel } from "./activity.js";
 
 /** Minimal session interface — avoids circular dependency on @octopal/server */
 export interface ConnectorSession {
@@ -12,7 +14,7 @@ export interface ConnectorSessionStore {
   sendOrRecover(
     sessionId: string,
     prompt: string,
-    options?: { timeoutMs?: number },
+    options?: { timeoutMs?: number; onEvent?: (event: SessionEvent) => void },
   ): Promise<{ response: { data?: { content?: string } } | undefined; recovered: boolean }>;
 }
 
@@ -173,12 +175,16 @@ export class DiscordConnector {
 
   /** Send a prompt to the agent and reply in a thread (no typing — caller manages it) */
   private async replyInThread(
-    channel: { send(content: string): Promise<any> },
+    channel: { send(content: string | { embeds: any[] }): Promise<any> },
     sessionId: string,
     text: string,
   ): Promise<void> {
+    const renderer = new DiscordActivityRenderer(channel as ActivityChannel);
     try {
-      const { response, recovered } = await this.sessionStore.sendOrRecover(sessionId, text);
+      const { response, recovered } = await this.sessionStore.sendOrRecover(sessionId, text, {
+        onEvent: (event) => { renderer.onEvent(event).catch(() => {}); },
+      });
+      await renderer.flush();
       const responseText = response?.data?.content ?? "";
 
       if (recovered) {
@@ -201,7 +207,7 @@ export class DiscordConnector {
 
   /** Send a prompt to the agent and reply in the given channel */
   private async replyInChannel(
-    channel: { send(content: string): Promise<any>; sendTyping?(): Promise<any> },
+    channel: { send(content: string | { embeds: any[] }): Promise<any>; sendTyping?(): Promise<any> },
     sessionId: string,
     text: string,
   ): Promise<void> {
@@ -211,8 +217,12 @@ export class DiscordConnector {
     }, 8_000);
     await channel.sendTyping?.().catch(() => {});
 
+    const renderer = new DiscordActivityRenderer(channel as ActivityChannel);
     try {
-      const { response, recovered } = await this.sessionStore.sendOrRecover(sessionId, text);
+      const { response, recovered } = await this.sessionStore.sendOrRecover(sessionId, text, {
+        onEvent: (event) => { renderer.onEvent(event).catch(() => {}); },
+      });
+      await renderer.flush();
       const responseText = response?.data?.content ?? "";
 
       if (recovered) {

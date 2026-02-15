@@ -130,6 +130,39 @@ export async function createServer({ config, host, port }: ServerOptions) {
     const discord = new DiscordConnector(config.discord, sessionStore, titleGenerator);
     await discord.start();
 
+    // Wire background task completions to Discord threads/DMs
+    agent.backgroundTasks.on("completed", async (run) => {
+      const sessionId = run.requesterSessionId;
+      if (!sessionId.startsWith("discord-")) return;
+
+      try {
+        const label = run.label ?? run.task.slice(0, 80);
+        const elapsed = ((run.endedAt ?? Date.now()) - run.startedAt) / 1000;
+        const prompt =
+          `[System] Background task "${label}" completed in ${elapsed.toFixed(0)}s:\n\n` +
+          `${run.result}\n\n` +
+          `Summarize these results for the user.`;
+        await sessionStore.sendOrRecover(sessionId, prompt);
+      } catch (err) {
+        console.error(`[discord] Failed to deliver background result to ${sessionId}:`, err);
+      }
+    });
+
+    agent.backgroundTasks.on("failed", async (run) => {
+      const sessionId = run.requesterSessionId;
+      if (!sessionId.startsWith("discord-")) return;
+
+      try {
+        const label = run.label ?? run.task.slice(0, 80);
+        const prompt =
+          `[System] Background task "${label}" failed: ${run.error}\n\n` +
+          `Inform the user that the background task failed.`;
+        await sessionStore.sendOrRecover(sessionId, prompt);
+      } catch (err) {
+        console.error(`[discord] Failed to deliver background failure to ${sessionId}:`, err);
+      }
+    });
+
     // Track DM channel IDs for tool access validation
     const dmChannelIds = new Set<string>();
 

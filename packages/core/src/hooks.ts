@@ -2,6 +2,7 @@ import type { CopilotClient, SessionConfig, ToolResultObject } from "@github/cop
 import type { VaultManager } from "./vault.js";
 import type { QmdSearch } from "./qmd.js";
 import type { SessionLogger } from "./session-logger.js";
+import type { BackgroundTaskManager } from "./background-tasks.js";
 import { runPreprocessor, type PreprocessorResult } from "./preprocessor.js";
 import { deterministicMatch, buildKnowledgeIndex } from "./knowledge.js";
 
@@ -55,8 +56,12 @@ export function buildSessionHooks(opts: {
   knowledgeOps: KnowledgeOperation[];
   /** Session logger — if provided, writes knowledge summary on session end */
   logger?: SessionLogger;
+  /** Background task manager — if provided, injects completed results on next prompt */
+  backgroundTasks?: BackgroundTaskManager;
+  /** Session ID used to query completed background tasks */
+  sessionId?: string;
 }): SessionHooks {
-  const { client, vault, qmd, knowledgeOps, logger } = opts;
+  const { client, vault, qmd, knowledgeOps, logger, backgroundTasks, sessionId } = opts;
   let aliasesModified = false;
 
   return {
@@ -71,6 +76,28 @@ export function buildSessionHooks(opts: {
       if (!prompt || prompt.length < 5) return;
 
       const sections: string[] = [];
+
+      // Inject completed background task results
+      if (backgroundTasks && sessionId) {
+        const completed = backgroundTasks.getCompleted(sessionId);
+        if (completed.length > 0) {
+          sections.push("## Completed Background Tasks");
+          for (const run of completed) {
+            const label = run.label ?? run.task.slice(0, 80);
+            const elapsed = ((run.endedAt ?? Date.now()) - run.startedAt) / 1000;
+            if (run.status === "completed") {
+              sections.push(
+                `### ✅ ${label} (${elapsed.toFixed(0)}s)\n${run.result}`,
+              );
+            } else {
+              sections.push(
+                `### ❌ ${label} (failed after ${elapsed.toFixed(0)}s)\nError: ${run.error}`,
+              );
+            }
+          }
+          sections.push("\nSummarize these results for the user.\n");
+        }
+      }
 
       // Run preprocessor (deterministic + semantic matching)
       let preprocessed: PreprocessorResult | null = null;

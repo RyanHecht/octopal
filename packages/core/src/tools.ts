@@ -10,6 +10,7 @@ import type { Scheduler } from "./scheduler.js";
 import { toCron } from "./schedule-types.js";
 import type { ConnectorRegistryLike } from "./types.js";
 import { QmdSearch, scopeToCollections, type SearchScope } from "./qmd.js";
+import type { BackgroundTaskManager } from "./background-tasks.js";
 
 export interface ToolDeps {
   vault: VaultManager;
@@ -19,10 +20,13 @@ export interface ToolDeps {
   scheduler?: Scheduler;
   connectors?: ConnectorRegistryLike;
   qmd?: QmdSearch;
+  backgroundTasks?: BackgroundTaskManager;
+  /** Agent reference for background task spawning (avoids circular import) */
+  getAgent?: () => import("./agent.js").OctopalAgent;
 }
 
 /** Build all vault tools as Copilot SDK Tool objects */
-export function buildVaultTools({ vault, para, tasks, client, scheduler, connectors, qmd }: ToolDeps) {
+export function buildVaultTools({ vault, para, tasks, client, scheduler, connectors, qmd, backgroundTasks, getAgent }: ToolDeps) {
   return [
     defineTool("analyze_input", {
       description:
@@ -505,6 +509,72 @@ export function buildVaultTools({ vault, para, tasks, client, scheduler, connect
         } catch (err) {
           return `Error: ${err instanceof Error ? err.message : String(err)}`;
         }
+      },
+    }),
+
+    // ── Background task tools ────────────────────────────────────────
+
+    defineTool("spawn_background_task", {
+      description:
+        "Spawn a long-running task in a background agent session. Use for tasks that would block the conversation: multi-step research, repo cloning, code generation across multiple files, competitive analysis, etc. The task runs independently and results are delivered when complete.",
+      parameters: z.object({
+        task: z.string().describe("Detailed description of the task to perform"),
+        label: z.string().optional().describe("Short human-readable label for the task (e.g. 'Research competitors')"),
+      }),
+      handler: async ({ task, label }: any, context: any) => {
+        if (!backgroundTasks || !getAgent) {
+          return "Error: Background tasks are not available (server not running).";
+        }
+
+        const sessionId = context?.sessionId ?? "unknown";
+        try {
+          const runId = await backgroundTasks.spawn(getAgent(), {
+            task,
+            label,
+            requesterSessionId: sessionId,
+          });
+          return `Background task spawned (ID: ${runId}). Label: "${label ?? task.slice(0, 50)}". You'll receive results when it completes.`;
+        } catch (err) {
+          return `Error spawning background task: ${err instanceof Error ? err.message : String(err)}`;
+        }
+      },
+    }),
+
+    defineTool("list_background_tasks", {
+      description:
+        "List all background tasks and their statuses (running, completed, failed)",
+      parameters: z.object({}),
+      handler: async (_args: any, context: any) => {
+        if (!backgroundTasks) {
+          return "Error: Background tasks are not available (server not running).";
+        }
+
+        const runs = backgroundTasks.list();
+        if (runs.length === 0) return "No background tasks.";
+
+        return runs.map((r) => {
+          const elapsed = ((r.endedAt ?? Date.now()) - r.startedAt) / 1000;
+          let line = `- **${r.label ?? r.task.slice(0, 50)}** [${r.runId.slice(0, 8)}] — ${r.status} (${elapsed.toFixed(0)}s)`;
+          if (r.status === "failed" && r.error) line += `\n  Error: ${r.error}`;
+          return line;
+        }).join("\n");
+      },
+    }),
+
+    defineTool("kill_background_task", {
+      description: "Kill a running background task by its ID",
+      parameters: z.object({
+        runId: z.string().describe("The task ID to kill (from list_background_tasks)"),
+      }),
+      handler: async ({ runId }: any) => {
+        if (!backgroundTasks) {
+          return "Error: Background tasks are not available (server not running).";
+        }
+
+        const killed = backgroundTasks.kill(runId);
+        return killed
+          ? `Background task ${runId.slice(0, 8)} killed.`
+          : `No running background task found with ID ${runId.slice(0, 8)}.`;
       },
     }),
   ];

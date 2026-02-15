@@ -3,3 +3,5 @@ export type { ConnectorSession, ConnectorSessionStore, ThreadTitleGenerator } fr
 export { splitMessage } from "./messages.js";
 export { buildDiscordTools } from "./tools.js";
 export type { DiscordToolDeps } from "./tools.js";
+export { DiscordActivityRenderer } from "./activity.js";
+export type { ActivityChannel } from "./activity.js";
