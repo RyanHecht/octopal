@@ -118,7 +118,7 @@ export class DiscordConnector {
     const sessionId = `discord-dm-${message.author.id}`;
     const channel = message.channel;
     if (!("send" in channel)) return;
-    await this.replyInChannel(channel, sessionId, text);
+    await this.replyInChannel(channel, sessionId, text, message.author.id);
   }
 
   /** Handle a message in an existing thread */
@@ -126,7 +126,7 @@ export class DiscordConnector {
     const sessionId = `discord-th-${message.channel.id}`;
     const channel = message.channel;
     if (!("send" in channel)) return;
-    await this.replyInChannel(channel, sessionId, text);
+    await this.replyInChannel(channel, sessionId, text, message.author.id);
   }
 
   /** Handle a message in a configured channel — auto-create a thread */
@@ -164,7 +164,7 @@ export class DiscordConnector {
 
       try {
         const sessionId = `discord-th-${thread.id}`;
-        await this.replyInThread(thread, sessionId, text);
+        await this.replyInThread(thread, sessionId, text, message.author.id);
       } finally {
         clearInterval(threadTypingInterval);
       }
@@ -178,6 +178,7 @@ export class DiscordConnector {
     channel: { send(content: string | { embeds: any[] }): Promise<any> },
     sessionId: string,
     text: string,
+    authorId: string,
   ): Promise<void> {
     const renderer = new DiscordActivityRenderer(channel as ActivityChannel);
     try {
@@ -195,8 +196,9 @@ export class DiscordConnector {
       if (!responseText) return;
 
       const chunks = splitMessage(responseText);
-      for (const chunk of chunks) {
-        await channel.send(chunk);
+      for (let i = 0; i < chunks.length; i++) {
+        const isLast = i === chunks.length - 1;
+        await channel.send(isLast ? `${chunks[i]}\n\n<@${authorId}>` : chunks[i]);
       }
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
@@ -210,6 +212,7 @@ export class DiscordConnector {
     channel: { send(content: string | { embeds: any[] }): Promise<any>; sendTyping?(): Promise<any> },
     sessionId: string,
     text: string,
+    authorId: string,
   ): Promise<void> {
     // Show typing indicator while processing
     const typingInterval = setInterval(() => {
@@ -233,8 +236,9 @@ export class DiscordConnector {
       if (!responseText) return;
 
       const chunks = splitMessage(responseText);
-      for (const chunk of chunks) {
-        await channel.send(chunk);
+      for (let i = 0; i < chunks.length; i++) {
+        const isLast = i === chunks.length - 1;
+        await channel.send(isLast ? `${chunks[i]}\n\n<@${authorId}>` : chunks[i]);
       }
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
