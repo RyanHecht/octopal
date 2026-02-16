@@ -3,6 +3,9 @@ import { promisify } from "node:util";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { VaultConfig } from "./types.js";
+import { createLogger } from "./log.js";
+
+const log = createLogger("vault");
 
 const exec = promisify(execFile);
 
@@ -43,9 +46,10 @@ export class VaultManager {
     try {
       await fs.access(path.join(this.config.localPath, ".git"));
       await this.pull();
-    } catch {
+    } catch (err) {
       if (this.config.remoteUrl) {
         await fs.mkdir(path.dirname(this.config.localPath), { recursive: true });
+        log.info("Cloning vault from", this.config.remoteUrl);
         await exec("gh", ["repo", "clone", this.config.remoteUrl, this.config.localPath]);
       } else {
         await fs.mkdir(this.config.localPath, { recursive: true });
@@ -57,8 +61,8 @@ export class VaultManager {
   async pull(): Promise<void> {
     try {
       await this.git("pull", "--rebase", "--autostash");
-    } catch {
-      // No remote configured or offline — that's fine
+    } catch (err) {
+      log.warn("git pull failed:", gitError(err));
     }
   }
 
@@ -67,7 +71,8 @@ export class VaultManager {
     try {
       const { stdout } = await this.git("status", "--porcelain");
       return !!stdout.trim();
-    } catch {
+    } catch (err) {
+      log.warn("git status failed:", gitError(err));
       return false;
     }
   }
@@ -81,8 +86,8 @@ export class VaultManager {
       await this.git("commit", "-m", message);
       try {
         await this.git("push");
-      } catch {
-        // No remote or offline — commit is saved locally
+      } catch (err) {
+        log.warn("git push failed (commit saved locally):", gitError(err));
       }
     });
   }
@@ -148,6 +153,7 @@ export class VaultManager {
   }
 
   private async git(...args: string[]) {
+    log.debug("git", ...args);
     return exec("git", ["-C", this.config.localPath, ...args]);
   }
 
@@ -175,4 +181,12 @@ export class VaultManager {
       }
     }
   }
+}
+
+/** Extract a useful message from execFile errors (stderr preferred). */
+function gitError(err: unknown): string {
+  if (err && typeof err === "object" && "stderr" in err && (err as { stderr: string }).stderr) {
+    return (err as { stderr: string }).stderr.trim();
+  }
+  return err instanceof Error ? err.message : String(err);
 }
