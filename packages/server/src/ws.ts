@@ -148,6 +148,7 @@ async function handleChatSend(
     }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
+    console.error(`[ws] Chat error (session ${sessionId}):`, message);
     if (socket.readyState === socket.OPEN) {
       socket.send(JSON.stringify({
         type: "chat.error",
@@ -238,6 +239,7 @@ async function handleConnectorMessage(
     }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
+    console.error(`[ws] Connector message error (session ${sessionId}):`, message);
     if (socket.readyState === socket.OPEN) {
       socket.send(JSON.stringify({
         type: "chat.error",

@@ -165,6 +165,7 @@ export class BackgroundTaskManager extends EventEmitter<BackgroundTaskEvents> {
       run.status = "failed";
       run.error = err instanceof Error ? err.message : String(err);
       run.endedAt = Date.now();
+      console.error(`[background] Task ${run.runId} failed:`, run.error);
       this.emit("failed", run);
     } finally {
       this.sessions.delete(run.runId);
