@@ -31,8 +31,7 @@ RUN apk add --no-cache git curl jq bash
 RUN curl -fsSL https://github.com/cli/cli/releases/latest/download/gh_$(curl -fsSL https://api.github.com/repos/cli/cli/releases/latest | jq -r '.tag_name | ltrimstr("v")')_linux_amd64.tar.gz \
     | tar xz --strip-components=1 -C /usr/local
 
-# Use gh as git credential helper so git push/pull inherit GH_TOKEN auth
-RUN gh auth setup-git 2>/dev/null || git config --global credential.helper '!gh auth git-credential'
+# Git credential helper is configured at runtime by entrypoint.sh
 
 # Copy QMD from its build stage (avoids rebuilding native deps every time)
 COPY --from=qmd-builder /root/.bun /root/.bun

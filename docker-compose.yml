@@ -5,7 +5,6 @@ services:
       - vault:/vault
       - octopal-config:/root/.octopal
       - shared:/shared
-      - ${HOME}/.gitconfig:/root/.gitconfig:ro
     environment:
       - OCTOPAL_VAULT_PATH=/vault
       - OCTOPAL_VAULT_REMOTE=${VAULT_REMOTE}
@@ -15,6 +14,8 @@ services:
       - OCTOPAL_PASSWORD_HASH=${OCTOPAL_PASSWORD_HASH}
       - OCTOPAL_TOKEN_SECRET=${OCTOPAL_TOKEN_SECRET}
       - GH_TOKEN=${GH_TOKEN}
+      - GIT_USER_NAME=${GIT_USER_NAME:-}
+      - GIT_USER_EMAIL=${GIT_USER_EMAIL:-}
       - OCTOPAL_DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN:-}
       - OCTOPAL_DISCORD_ALLOWED_USERS=${DISCORD_ALLOWED_USERS:-}
       - OCTOPAL_DISCORD_CHANNELS=${DISCORD_CHANNELS:-}
