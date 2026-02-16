@@ -2,9 +2,9 @@
 
 I wanted to make my own OpenClaw-like personal agentic assistant powered by the [GitHub Copilot SDK](https://github.com/github/copilot-sdk). OpenClaw seemed very bloated and brittle given what I wanted for my own usecase, and I wanted to build on the amazing harness built by the Copilot CLI team.
 
-Octopal is built around an ever-improving personal knowledge management "second brain." Give it notes, brain dumps, or voice transcripts — it files them into your [Obsidian](https://obsidian.md/) vault using the [PARA method](https://fortelabs.com/blog/para/) and creates actionable tasks. Connects via CLI, Discord, or VS Code.
+Octopal is built around an [ever-improving](https://github.com/RyanHecht/octopal/wiki/Memory-System) personal knowledge management "[second brain](https://github.com/RyanHecht/octopal/wiki/Knowledge-Base)." Give it notes, brain dumps, or voice transcripts — it files them into your [Obsidian](https://obsidian.md/) vault using the [PARA method](https://fortelabs.com/blog/para/) and creates actionable tasks. Connects via [CLI](https://github.com/RyanHecht/octopal/wiki/CLI-Reference), [Discord](https://github.com/RyanHecht/octopal/wiki/Connectors#discord-connector), or VS Code. Extend its capabilities via [skills](https://github.com/RyanHecht/octopal/wiki/Skills-System).
 
-Give Octopal additional capabilities with [skills](wiki/Skills-System.md).
+Learn more about its capabilities in [the wiki](https://github.com/RyanHecht/octopal/wiki). I'm currently just building this for me; documentation/getting started guides are secondary.
 
 ## Getting Started
 
@@ -42,7 +42,7 @@ cp .env.example .env
 docker compose up -d
 ```
 
-This starts the Octopal daemon (port 3847) and a web-based vault viewer (code-server, port 8443). See [Docker Deployment](wiki/Docker-Deployment.md) for Traefik TLS and production setup.
+This starts the Octopal daemon (port 3847) and a web-based vault viewer (code-server, port 8443). See [Docker Deployment](https://github.com/RyanHecht/octopal/wiki/Docker-Deployment) for Traefik TLS and production setup.
 
 ### 3. Connect
 
@@ -55,7 +55,7 @@ Talk to Octopal through any channel:
 
 The agent will analyze your input, file it into your PARA structure, extract action items as [Obsidian Tasks](https://github.com/obsidian-tasks-group/obsidian-tasks), and commit changes to git.
 
-> **Local development**: You can also run the daemon directly with `octopal serve` instead of Docker. See the [CLI Reference](wiki/CLI-Reference.md) for all commands.
+> **Local development**: You can also run the daemon directly with `octopal serve` instead of Docker. See the [CLI Reference](https://github.com/RyanHecht/octopal/wiki/CLI-Reference) for all commands.
 
 ## Project Structure
 
@@ -81,21 +81,21 @@ octopal/
 
 Octopal uses a **central-daemon architecture**: `octopal serve` runs a Fastify + WebSocket server that owns a single `OctopalAgent`. The CLI, Discord bot, and VS Code extension are all clients that connect over WebSocket.
 
-See the [wiki](wiki/) for detailed documentation:
+See the [wiki](https://github.com/RyanHecht/octopal/wiki) for detailed documentation:
 
-| Page                                           | Description                                       |
-| ---------------------------------------------- | ------------------------------------------------- |
-| [Architecture](wiki/Architecture.md)           | System design, packages, data flow                |
-| [Getting Started](wiki/Getting-Started.md)     | First-time setup walkthrough                      |
-| [CLI Reference](wiki/CLI-Reference.md)         | All CLI commands and options                      |
-| [Daemon and API](wiki/Daemon-and-API.md)       | REST endpoints and WebSocket protocol             |
-| [Skills System](wiki/Skills-System.md)         | Writing and installing skills                     |
-| [Connectors](wiki/Connectors.md)               | Discord, remote connectors, building your own     |
-| [Docker Deployment](wiki/Docker-Deployment.md) | Container setup with docker-compose               |
-| [Configuration](wiki/Configuration.md)         | config.toml reference and environment variables   |
-| [Knowledge Base](wiki/Knowledge-Base.md)       | People, terms, and organizations                  |
-| [Agent Tools](wiki/Agent-Tools.md)             | Built-in tool reference                           |
-| [Contributing](wiki/Contributing.md)           | Development setup, adding tools/skills/connectors |
+| Page                                                                             | Description                                       |
+| -------------------------------------------------------------------------------- | ------------------------------------------------- |
+| [Architecture](https://github.com/RyanHecht/octopal/wiki/Architecture)           | System design, packages, data flow                |
+| [Getting Started](https://github.com/RyanHecht/octopal/wiki/Getting-Started)     | First-time setup walkthrough                      |
+| [CLI Reference](https://github.com/RyanHecht/octopal/wiki/CLI-Reference)         | All CLI commands and options                      |
+| [Daemon and API](https://github.com/RyanHecht/octopal/wiki/Daemon-and-API)       | REST endpoints and WebSocket protocol             |
+| [Skills System](https://github.com/RyanHecht/octopal/wiki/Skills-System)         | Writing and installing skills                     |
+| [Connectors](https://github.com/RyanHecht/octopal/wiki/Connectors)               | Discord, remote connectors, building your own     |
+| [Docker Deployment](https://github.com/RyanHecht/octopal/wiki/Docker-Deployment) | Container setup with docker-compose               |
+| [Configuration](https://github.com/RyanHecht/octopal/wiki/Configuration)         | config.toml reference and environment variables   |
+| [Knowledge Base](https://github.com/RyanHecht/octopal/wiki/Knowledge-Base)       | People, terms, and organizations                  |
+| [Agent Tools](https://github.com/RyanHecht/octopal/wiki/Agent-Tools)             | Built-in tool reference                           |
+| [Contributing](https://github.com/RyanHecht/octopal/wiki/Contributing)           | Development setup, adding tools/skills/connectors |
 
 ## Skills
 
