@@ -47,3 +47,5 @@ export type { OctopalConnector, InboundMessage, OutboundMessage } from "./connec
 export { BackgroundTaskManager } from "./background-tasks.js";
 export type { BackgroundRun, BackgroundTaskEvents } from "./background-tasks.js";
 export { transformWikilinks, buildVaultFileUrl, buildFileIndex } from "./wikilinks.js";
+export { createLogger, initLogging, setLogLevel, getLogLevel } from "./log.js";
+export type { Logger, LogLevel } from "./log.js";

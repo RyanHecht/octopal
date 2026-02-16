@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { hostname } from "node:os";
 import { OctopalRemoteConnector, shellHandler } from "./connector.js";
+import { createLogger, initLogging } from "@octopal/core";
 
 function usage(): never {
   console.error(`Usage: octopal-connector [options]
@@ -39,6 +40,9 @@ async function main() {
   const token = args.token ?? process.env.OCTOPAL_TOKEN;
   const name = args.name ?? process.env.OCTOPAL_CONNECTOR_NAME ?? hostname();
 
+  initLogging();
+  const log = createLogger(`connector:${name}`);
+
   if (!daemonUrl) {
     console.error("Error: --daemon-url or OCTOPAL_DAEMON_URL is required");
     usage();
@@ -65,7 +69,7 @@ async function main() {
 
   // Graceful shutdown
   const shutdown = async () => {
-    console.log(`[connector:${name}] Shutting down...`);
+    log.info("Shutting down...");
     await connector.disconnect();
     process.exit(0);
   };
@@ -78,18 +82,18 @@ async function main() {
   while (true) {
     try {
       await connector.connect();
-      console.log(`[connector:${name}] Connected to ${daemonUrl}`);
+      log.info(`Connected to ${daemonUrl}`);
       break;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       // Auth errors are not retryable
       if (msg.startsWith("Authentication failed")) {
-        console.error(`[connector:${name}] ${msg}`);
+        log.error(msg);
         process.exit(1);
       }
       const jitter = 1 + (Math.random() - 0.5) * 0.5;
       const wait = Math.min(delay * jitter, maxDelay);
-      console.log(`[connector:${name}] Cannot reach daemon (${msg}), retrying in ${Math.round(wait / 1000)}s...`);
+      log.info(`Cannot reach daemon (${msg}), retrying in ${Math.round(wait / 1000)}s...`);
       await new Promise(r => setTimeout(r, wait));
       delay = Math.min(delay * 2, maxDelay);
     }

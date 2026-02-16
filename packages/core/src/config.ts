@@ -41,6 +41,8 @@ export interface OctopalUserConfig {
   vaultBaseUrl?: string;
   /** Absolute path to the vault inside the web viewer (e.g., /home/coder/vault) */
   vaultPathPrefix?: string;
+  /** Log level: error, warn, info, debug (default: info) */
+  logLevel?: string;
   /** Server configuration */
   server?: ServerConfig;
   /** Scheduler configuration */
@@ -57,6 +59,7 @@ export interface ResolvedConfig {
   vaultRemoteUrl?: string;
   vaultBaseUrl?: string;
   vaultPathPrefix?: string;
+  logLevel?: string;
   server: {
     port: number;
     passwordHash?: string;
@@ -83,6 +86,10 @@ export const CONFIG_TEMPLATE = `# Octopal configuration
 # Absolute path to the vault inside the web viewer
 # Required for code-server links to open the correct file
 # vaultPathPrefix = "/home/coder/vault"
+
+# Log level: error, warn, info, debug (default: info)
+# Override with OCTOPAL_LOG_LEVEL env var
+# logLevel = "info"
 
 [server]
 # Port for the octopal daemon (default: 3847)
@@ -148,6 +155,9 @@ export async function loadConfig(): Promise<ResolvedConfig> {
   if (process.env.OCTOPAL_TOKEN_SECRET) {
     base.server.tokenSecret = process.env.OCTOPAL_TOKEN_SECRET;
   }
+  if (process.env.OCTOPAL_LOG_LEVEL) {
+    base.logLevel = process.env.OCTOPAL_LOG_LEVEL;
+  }
 
   // Discord env var overrides
   const envBotToken = process.env.OCTOPAL_DISCORD_BOT_TOKEN;
@@ -176,6 +186,9 @@ export async function loadConfig(): Promise<ResolvedConfig> {
     }
     if (saved.vaultPathPrefix) {
       base.vaultPathPrefix ??= saved.vaultPathPrefix;
+    }
+    if (saved.logLevel) {
+      base.logLevel ??= saved.logLevel;
     }
     if (saved.server) {
       base.server.port = saved.server.port ?? base.server.port;

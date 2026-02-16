@@ -1,6 +1,9 @@
 import type { CopilotSession, SessionEvent } from "@github/copilot-sdk";
 import type { VaultManager } from "./vault.js";
 import { KNOWLEDGE_TOOLS } from "./hooks.js";
+import { createLogger } from "./log.js";
+
+const log = createLogger("session-logger");
 
 const MAX_TOOL_RESULT_LENGTH = 2000;
 const LOG_DIR = "Resources/Session Logs";
@@ -74,7 +77,7 @@ export class SessionLogger {
       }),
       session.on("assistant.turn_end", () => {
         this.flushTurn().catch((err) => {
-          console.error("[session-logger] Failed to flush turn:", err);
+          log.error("Failed to flush turn:", err);
         });
       }),
     ];

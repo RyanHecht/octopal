@@ -1,5 +1,7 @@
 import type { CopilotSession, SessionEventHandler, AssistantMessageEvent, Tool } from "@github/copilot-sdk";
-import type { OctopalAgent } from "@octopal/core";
+import { createLogger, type OctopalAgent } from "@octopal/core";
+
+const log = createLogger("sessions");
 
 /**
  * Maps deterministic session IDs to live SDK sessions.
@@ -80,20 +82,24 @@ export class SessionStore {
     const timeoutMs = options?.timeoutMs ?? 300_000;
     const session = await this.getOrCreate(sessionId, { onEvent: options?.onEvent });
 
+    const done = log.timed(`sendOrRecover ${sessionId}`, "info");
     try {
       const response = await session.sendAndWait({ prompt }, timeoutMs);
+      done();
       return { response, recovered: false };
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       if (!message.includes("Session not found")) {
+        done();
         throw err;
       }
 
-      console.log(`[sessions] Session ${sessionId} expired server-side, recreating`);
+      log.info(`Session ${sessionId} expired server-side, recreating`);
       await this.destroy(sessionId);
 
       const freshSession = await this.getOrCreate(sessionId, { onEvent: options?.onEvent });
       const response = await freshSession.sendAndWait({ prompt }, timeoutMs);
+      done();
       return { response, recovered: true };
     }
   }

@@ -8,6 +8,9 @@
 import type { SessionEvent } from "@github/copilot-sdk";
 import type { Message } from "discord.js";
 import { EmbedBuilder } from "discord.js";
+import { createLogger } from "@octopal/core";
+
+const log = createLogger("discord-activity");
 
 /** A Discord-like channel that can send messages */
 export interface ActivityChannel {
@@ -163,7 +166,7 @@ export class DiscordActivityRenderer {
         }
       }
     } catch (err) {
-      console.error("[discord-activity] Embed update failed:", err);
+      log.error("Embed update failed:", err);
     }
   }
 

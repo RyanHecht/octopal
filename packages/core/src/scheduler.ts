@@ -14,6 +14,9 @@ import {
   toCron,
   cronMatches,
 } from "./schedule-types.js";
+import { createLogger } from "./log.js";
+
+const log = createLogger("scheduler");
 
 const SCHEDULES_DIR = "Meta/schedules";
 const HISTORY_FILE = "Meta/schedules/history.md";
@@ -80,24 +83,24 @@ export class Scheduler {
           builtin: false,
         });
       } catch (err) {
-        console.error(`[scheduler] Failed to load ${file}:`, err);
+        log.error(`Failed to load ${file}:`, err);
       }
     }
 
-    console.log(`[scheduler] Loaded ${this.tasks.size} schedule(s)`);
+    log.info(`Loaded ${this.tasks.size} schedule(s)`);
   }
 
   /** Start the tick loop */
   async start(): Promise<void> {
     if (!this.enabled) {
-      console.log("[scheduler] Disabled, not starting");
+      log.info("Disabled, not starting");
       return;
     }
 
     await this.loadFromVault();
     this.running = true;
     this.scheduleTick();
-    console.log("[scheduler] Started");
+    log.info("Started");
   }
 
   /** Stop the tick loop */
@@ -107,7 +110,7 @@ export class Scheduler {
       clearTimeout(this.timer);
       this.timer = null;
     }
-    console.log("[scheduler] Stopped");
+    log.info("Stopped");
   }
 
   /** Force reload schedules from vault (called after agent creates/cancels a task) */
@@ -135,7 +138,7 @@ export class Scheduler {
       }
       await this.checkAndExecute();
     } catch (err) {
-      console.error("[scheduler] Tick error:", err);
+      log.error("Tick error:", err);
     } finally {
       this.scheduleTick();
     }
@@ -159,7 +162,7 @@ export class Scheduler {
           const cron = toCron(task.schedule);
           isDue = cronMatches(cron, now);
         } catch (err) {
-          console.error(`[scheduler] Bad schedule for "${task.id}":`, err);
+          log.error(`Bad schedule for "${task.id}":`, err);
           continue;
         }
 
@@ -187,7 +190,7 @@ export class Scheduler {
   private async executeTask(task: ScheduledTask): Promise<void> {
     this.executing = true;
     const startedAt = new Date().toISOString();
-    console.log(`[scheduler] Executing "${task.name}" (${task.id})`);
+    log.info(`Executing "${task.name}" (${task.id})`);
 
     let success = false;
     let summary = "";
@@ -200,10 +203,10 @@ export class Scheduler {
         summary = response.slice(0, 500);
       }
       success = true;
-      console.log(`[scheduler] "${task.name}" completed`);
+      log.info(`"${task.name}" completed`);
     } catch (err) {
       summary = err instanceof Error ? err.message : String(err);
-      console.error(`[scheduler] "${task.name}" failed:`, summary);
+      log.error(`"${task.name}" failed:`, summary);
     }
 
     const finishedAt = new Date().toISOString();

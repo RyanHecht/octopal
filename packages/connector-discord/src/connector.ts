@@ -1,8 +1,10 @@
 import { Client, GatewayIntentBits, Partials, ChannelType, type Message } from "discord.js";
 import type { SessionEvent } from "@github/copilot-sdk";
-import type { DiscordConfig } from "@octopal/core";
+import { createLogger, type DiscordConfig } from "@octopal/core";
 import { splitMessage } from "./messages.js";
 import { DiscordActivityRenderer, type ActivityChannel } from "./activity.js";
+
+const log = createLogger("discord");
 
 /** Minimal session interface — avoids circular dependency on @octopal/server */
 export interface ConnectorSession {
@@ -58,12 +60,12 @@ export class DiscordConnector {
 
   async start(): Promise<void> {
     this.client.on("ready", () => {
-      console.log(`[discord] Logged in as ${this.client.user?.tag}`);
+      log.info(`Logged in as ${this.client.user?.tag}`);
     });
 
     this.client.on("messageCreate", (message) => {
       this.handleMessage(message).catch((err) => {
-        console.error("[discord] Error handling message:", err);
+        log.error("Error handling message:", err);
       });
     });
 
@@ -73,7 +75,7 @@ export class DiscordConnector {
   async stop(): Promise<void> {
     this.client.removeAllListeners();
     await this.client.destroy();
-    console.log("[discord] Disconnected");
+    log.info("Disconnected");
   }
 
   private async handleMessage(message: Message): Promise<void> {
@@ -146,7 +148,7 @@ export class DiscordConnector {
         try {
           threadName = await this.titleGenerator.generateTitle(text);
         } catch (err) {
-          console.error("[discord] Failed to generate thread title, using fallback:", err);
+          log.error("Failed to generate thread title, using fallback:", err);
         }
       }
 
@@ -189,7 +191,7 @@ export class DiscordConnector {
       const responseText = response?.data?.content ?? "";
 
       if (recovered) {
-        console.log(`[discord] Session ${sessionId} was recovered after expiry`);
+        log.info(`Session ${sessionId} recovered after expiry`);
         await channel.send("⚡ *Session refreshed — conversation history was reset.*").catch(() => {});
       }
 
@@ -202,7 +204,7 @@ export class DiscordConnector {
       }
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      console.error(`[discord] Session ${sessionId} error:`, errMsg);
+      log.error(`Session ${sessionId} error:`, errMsg);
       await channel.send("Sorry, something went wrong processing your message.").catch(() => {});
     }
   }
@@ -229,7 +231,7 @@ export class DiscordConnector {
       const responseText = response?.data?.content ?? "";
 
       if (recovered) {
-        console.log(`[discord] Session ${sessionId} was recovered after expiry`);
+        log.info(`Session ${sessionId} recovered after expiry`);
         await channel.send("⚡ *Session refreshed — conversation history was reset.*").catch(() => {});
       }
 
@@ -242,7 +244,7 @@ export class DiscordConnector {
       }
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      console.error(`[discord] Session ${sessionId} error:`, errMsg);
+      log.error(`Session ${sessionId} error:`, errMsg);
       await channel.send("Sorry, something went wrong processing your message.").catch(() => {});
     } finally {
       clearInterval(typingInterval);

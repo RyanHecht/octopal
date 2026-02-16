@@ -5,6 +5,9 @@ import type { SessionLogger } from "./session-logger.js";
 import type { BackgroundTaskManager } from "./background-tasks.js";
 import { runPreprocessor, type PreprocessorResult } from "./preprocessor.js";
 import { deterministicMatch, buildKnowledgeIndex } from "./knowledge.js";
+import { createLogger } from "./log.js";
+
+const log = createLogger("hooks");
 
 /** Extract the SessionHooks type from SessionConfig */
 type SessionHooks = NonNullable<SessionConfig["hooks"]>;
@@ -75,6 +78,7 @@ export function buildSessionHooks(opts: {
       const prompt = input.prompt;
       if (!prompt || prompt.length < 5) return;
 
+      const doneHook = log.timed("onUserPromptSubmitted");
       const sections: string[] = [];
 
       // Inject completed background task results
@@ -102,7 +106,9 @@ export function buildSessionHooks(opts: {
       // Run preprocessor (deterministic + semantic matching)
       let preprocessed: PreprocessorResult | null = null;
       try {
+        const donePreprocess = log.timed("preprocessor");
         preprocessed = await runPreprocessor(client, vault, prompt);
+        donePreprocess();
       } catch {
         // Preprocessor failed — continue without it
       }
@@ -155,7 +161,9 @@ export function buildSessionHooks(opts: {
       // QMD search for broader vault context
       if (qmd && (await qmd.isAvailable())) {
         try {
+          const doneQmd = log.timed("QMD search");
           const results = await qmd.search(prompt, ["knowledge", "notes"], 5);
+          doneQmd();
           if (results.length > 0) {
             // Don't duplicate entries already found by preprocessor
             const alreadyFound = new Set(
@@ -176,8 +184,12 @@ export function buildSessionHooks(opts: {
         }
       }
 
-      if (sections.length === 0) return;
+      if (sections.length === 0) {
+        doneHook();
+        return;
+      }
 
+      doneHook();
       return {
         additionalContext: sections.join("\n"),
       };
@@ -209,6 +221,8 @@ export function buildSessionHooks(opts: {
           ? toolResult
           : toolResult?.textResultForLlm ?? "";
       if (!resultText || resultText.length < 50) return;
+
+      const donePostTool = log.timed(`onPostToolUse (${toolName})`);
 
       // Truncate very long results
       const text = resultText.slice(0, 3000);
@@ -266,8 +280,12 @@ export function buildSessionHooks(opts: {
         // Entity detection failed — don't block
       }
 
-      if (sections.length === 0) return;
+      if (sections.length === 0) {
+        donePostTool();
+        return;
+      }
 
+      donePostTool();
       return {
         additionalContext: sections.join("\n"),
       };

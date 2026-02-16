@@ -3,6 +3,7 @@ import { execFile } from "node:child_process";
 import { appendFile, mkdir } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
+import { createLogger } from "@octopal/core";
 
 /** Handler for a connector capability request */
 export type CapabilityHandler = (
@@ -41,8 +42,11 @@ export class OctopalRemoteConnector {
   private reconnectDelay = 1000;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private stopped = false;
+  private log;
 
-  constructor(private options: RemoteConnectorOptions) {}
+  constructor(private options: RemoteConnectorOptions) {
+    this.log = createLogger(`connector:${options.name}`);
+  }
 
   /** Register a handler for a capability */
   onRequest(capability: string, handler: CapabilityHandler): void {
@@ -144,7 +148,7 @@ export class OctopalRemoteConnector {
       ws.on("close", () => {
         this.ws = null;
         if (!this.stopped) {
-          console.log(`[connector:${this.options.name}] Disconnected, reconnecting in ${this.reconnectDelay}ms`);
+          this.log.info(`Disconnected, reconnecting in ${this.reconnectDelay}ms`);
           this.scheduleReconnect();
         }
         if (!connected) {
@@ -153,7 +157,7 @@ export class OctopalRemoteConnector {
       });
 
       ws.on("error", (err) => {
-        console.error(`[connector:${this.options.name}] WebSocket error:`, err.message);
+        this.log.error("WebSocket error:", err.message);
         if (!connected) {
           settle(() => reject(err));
         }
@@ -166,7 +170,7 @@ export class OctopalRemoteConnector {
   private handleMessage(ws: WebSocket, msg: any, onAck: () => void): void {
     switch (msg.type) {
       case "connector.ack":
-        console.log(`[connector:${this.options.name}] Registered with daemon`);
+        this.log.info("Registered with daemon");
         onAck();
         break;
 
@@ -175,7 +179,7 @@ export class OctopalRemoteConnector {
         break;
 
       case "error":
-        console.error(`[connector:${this.options.name}] Daemon error: ${msg.error}`);
+        this.log.error(`Daemon error: ${msg.error}`);
         break;
     }
   }
@@ -224,7 +228,7 @@ export class OctopalRemoteConnector {
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       this.doConnect().catch((err) => {
-        console.error(`[connector:${this.options.name}] Reconnect failed:`, err.message);
+        this.log.error("Reconnect failed:", err.message);
         this.reconnectDelay = Math.min(this.reconnectDelay * 2, maxDelay);
         this.scheduleReconnect();
       });

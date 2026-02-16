@@ -3,6 +3,7 @@ import websocket from "@fastify/websocket";
 import {
   OctopalAgent,
   Scheduler,
+  createLogger,
   type ResolvedConfig,
 } from "@octopal/core";
 import { authRoutes, loadRevokedTokens } from "./routes/auth.js";
@@ -12,6 +13,8 @@ import { registerWebSocket } from "./ws.js";
 import { SessionStore } from "./sessions.js";
 import { ConnectorRegistry } from "./connector-registry.js";
 
+const log = createLogger("server");
+
 export interface ServerOptions {
   config: ResolvedConfig;
   host?: string;
@@ -20,9 +23,7 @@ export interface ServerOptions {
 
 export async function createServer({ config, host, port }: ServerOptions) {
   const fastify = Fastify({
-    logger: {
-      level: "info",
-    },
+    logger: false,
     bodyLimit: 1_048_576, // 1 MB max request body
   });
 
@@ -67,6 +68,15 @@ export async function createServer({ config, host, port }: ServerOptions) {
   // Register plugins
   await fastify.register(websocket, {
     options: { maxPayload: 1_048_576 }, // 1 MB max WebSocket message
+  });
+
+  // Request logging (debug level to avoid noise)
+  fastify.addHook("onResponse", (request, reply, done) => {
+    // Skip health checks and WebSocket upgrades
+    if (request.url !== "/health" && !request.url.startsWith("/ws")) {
+      log.debug(`${request.method} ${request.url} ${reply.statusCode}`);
+    }
+    done();
   });
 
   // CORS — restrict to localhost by default
@@ -146,7 +156,7 @@ export async function createServer({ config, host, port }: ServerOptions) {
           `Summarize these results for the user.`;
         await sessionStore.sendOrRecover(sessionId, prompt);
       } catch (err) {
-        console.error(`[discord] Failed to deliver background result to ${sessionId}:`, err);
+        log.error(`Failed to deliver background result to ${sessionId}:`, err);
       }
     });
 
@@ -161,7 +171,7 @@ export async function createServer({ config, host, port }: ServerOptions) {
           `Inform the user that the background task failed.`;
         await sessionStore.sendOrRecover(sessionId, prompt);
       } catch (err) {
-        console.error(`[discord] Failed to deliver background failure to ${sessionId}:`, err);
+        log.error(`Failed to deliver background failure to ${sessionId}:`, err);
       }
     });
 

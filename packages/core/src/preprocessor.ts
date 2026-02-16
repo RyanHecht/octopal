@@ -6,6 +6,9 @@ import {
   formatIndexForLLM,
   type KnowledgeIndex,
 } from "./knowledge.js";
+import { createLogger } from "./log.js";
+
+const log = createLogger("preprocessor");
 
 export interface PreprocessorResult {
   /** Knowledge entries confirmed relevant to this input */
@@ -85,12 +88,14 @@ export async function runPreprocessor(
 
   // Only run Phase 2 if there are knowledge entries to match against
   try {
+    const doneSemantic = log.timed("Semantic match");
     const semanticResult = await runSemanticMatch(
       client,
       index,
       rawInput,
       deterministicPaths,
     );
+    doneSemantic();
 
     // Process semantic matches
     for (const match of semanticResult.semanticMatches) {

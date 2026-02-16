@@ -8,6 +8,9 @@ import { EventEmitter } from "node:events";
 import crypto from "node:crypto";
 import type { CopilotSession, SessionEvent } from "@github/copilot-sdk";
 import type { OctopalAgent } from "./agent.js";
+import { createLogger } from "./log.js";
+
+const log = createLogger("background");
 
 export interface BackgroundRun {
   runId: string;
@@ -155,7 +158,9 @@ export class BackgroundTaskManager extends EventEmitter<BackgroundTaskEvents> {
       ].join("\n");
 
       const prompt = `${systemContext}\n## Task\n${run.task}`;
+      const done = log.timed(`Task ${run.label ?? run.runId}`, "info");
       const result = await agent.sendAndWait(session, prompt);
+      done();
 
       run.status = "completed";
       run.result = result;
@@ -165,7 +170,7 @@ export class BackgroundTaskManager extends EventEmitter<BackgroundTaskEvents> {
       run.status = "failed";
       run.error = err instanceof Error ? err.message : String(err);
       run.endedAt = Date.now();
-      console.error(`[background] Task ${run.runId} failed:`, run.error);
+      log.error(`Task ${run.runId} failed:`, run.error);
       this.emit("failed", run);
     } finally {
       this.sessions.delete(run.runId);

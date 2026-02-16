@@ -12,6 +12,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@octopal/core": "*",
     "ws": "^8.0.0"
   },
   "devDependencies": {

@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 
-import { loadConfig, isConfigured, hashPassword, saveConfig } from "@octopal/core";
+import { loadConfig, isConfigured, hashPassword, saveConfig, initLogging } from "@octopal/core";
 import { createServer } from "./server.js";
-import { installTimestampedLogging } from "./log.js";
 
 async function main() {
   const args = process.argv.slice(2);
@@ -91,7 +90,7 @@ Options:
     host = args[hostIdx + 1];
   }
 
-  installTimestampedLogging();
+  initLogging({ level: (config.logLevel as any) ?? undefined });
   console.log(`🐙 Starting octopal server on ${host}:${port}...`);
 
   const server = await createServer({ config, host, port });

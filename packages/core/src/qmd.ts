@@ -1,7 +1,9 @@
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
+import { createLogger } from "./log.js";
 
 const exec = promisify(execFile);
+const log = createLogger("qmd");
 
 /** Result from a QMD search call */
 export interface QmdSearchResult {
@@ -62,7 +64,7 @@ export class QmdSearch {
         await exec("qmd", ["collection", "add", col.path, "--name", col.name], { timeout: 10000 });
         await exec("qmd", ["context", "add", `qmd://${col.name}`, col.context], { timeout: 10000 });
       } catch (err) {
-        console.error(`[qmd] Failed to set up collection "${col.name}":`, err);
+        log.error(`Failed to set up collection "${col.name}":`, err);
       }
     }
 

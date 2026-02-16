@@ -1,10 +1,12 @@
 import type { FastifyInstance } from "fastify";
 import type { WebSocket } from "ws";
-import { verifyToken, transformWikilinks, type TokenPayload, type ResolvedConfig, type OctopalAgent, type VaultManager } from "@octopal/core";
+import { verifyToken, transformWikilinks, createLogger, type TokenPayload, type ResolvedConfig, type OctopalAgent, type VaultManager } from "@octopal/core";
 import type { ClientMessage } from "./protocol.js";
 import type { SessionStore } from "./sessions.js";
 import type { ConnectorRegistry } from "./connector-registry.js";
 import { isTokenRevoked } from "./routes/auth.js";
+
+const log = createLogger("ws");
 
 export function registerWebSocket(
   fastify: FastifyInstance,
@@ -148,7 +150,7 @@ async function handleChatSend(
     }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error(`[ws] Chat error (session ${sessionId}):`, message);
+    log.error(`Chat error (session ${sessionId}):`, message);
     if (socket.readyState === socket.OPEN) {
       socket.send(JSON.stringify({
         type: "chat.error",
@@ -190,7 +192,7 @@ function handleConnectorRegister(
     return;
   }
 
-  console.log(`[ws] Connector "${name.trim()}" registered with capabilities: [${(capabilities ?? []).join(", ")}]`);
+  log.info(`Connector "${name.trim()}" registered with capabilities: [${(capabilities ?? []).join(", ")}]`);
   socket.send(JSON.stringify({ type: "connector.ack", name: name.trim() }));
 }
 
@@ -225,7 +227,7 @@ async function handleConnectorMessage(
     });
 
     if (recovered) {
-      console.log(`[${connectorName}] Session ${sessionId} was recovered after expiry`);
+      log.info(`Session ${sessionId} recovered after expiry (connector: ${connectorName})`);
     }
 
     const responseText = maybeTransformLinks(response?.data?.content ?? "", config);
@@ -239,7 +241,7 @@ async function handleConnectorMessage(
     }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error(`[ws] Connector message error (session ${sessionId}):`, message);
+    log.error(`Connector message error (session ${sessionId}):`, message);
     if (socket.readyState === socket.OPEN) {
       socket.send(JSON.stringify({
         type: "chat.error",
@@ -266,14 +268,14 @@ async function handleVaultFilesChanged(
       : `User edit: ${paths.length} files (${paths.slice(0, 3).join(", ")}${paths.length > 3 ? ", ..." : ""})`;
 
     await vault.commitAndPush(summary);
-    console.log(`[ws] Vault changes committed: ${summary}`);
+    log.info(`Vault changes committed: ${summary}`);
 
     if (socket.readyState === socket.OPEN) {
       socket.send(JSON.stringify({ type: "vault.committed", paths }));
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error(`[ws] Failed to commit vault changes: ${message}`);
+    log.error(`Failed to commit vault changes: ${message}`);
     if (socket.readyState === socket.OPEN) {
       socket.send(JSON.stringify({ type: "vault.error", error: message }));
     }

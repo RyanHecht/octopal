@@ -13,9 +13,12 @@ import { SYSTEM_PROMPT } from "./prompts.js";
 import { QmdSearch } from "./qmd.js";
 import { buildSessionHooks, type KnowledgeOperation } from "./hooks.js";
 import { BackgroundTaskManager } from "./background-tasks.js";
+import { createLogger } from "./log.js";
 import type { OctopalConfig } from "./types.js";
 import type { ConnectorRegistryLike } from "./types.js";
 import type { Scheduler } from "./scheduler.js";
+
+const log = createLogger("agent");
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -182,7 +185,9 @@ export class OctopalAgent {
     prompt: string,
     timeout = 300_000,
   ): Promise<string> {
+    const done = log.timed("LLM call", "info");
     const response = await session.sendAndWait({ prompt }, timeout);
+    done();
     return response?.data?.content ?? "";
   }
 
