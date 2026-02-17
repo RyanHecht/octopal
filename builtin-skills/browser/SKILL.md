@@ -138,12 +138,16 @@ playwright-cli open https://example.com --headed --persistent --profile=~/.octop
 
 ## Vault Integration
 
-When browsing produces useful information:
+Only file things into the vault when the user asks you to, or when content is directly relevant to an active project or area. Don't save things speculatively.
 
-1. **Save pages as Resources** — If you find a useful article, guide, or reference, save it to the vault using `write_note` in `Resources/`
-2. **Extract and file data** — Use `eval` or `snapshot` to extract text content, then file structured information as knowledge entries
-3. **Save screenshots** — When visual content matters, take a screenshot and note the file path in the vault
-4. **Create knowledge entries** — If you discover information about people, organizations, or terms, save them using `save_knowledge`
+- **Save reference material** — If the user asks you to save an article, guide, or reference, use `write_note` to create a note in `Resources/` with a summary and the source URL.
+- **Save knowledge entries** — Use `save_knowledge` only when you encounter a specific person, organization, or term that's relevant to the user's work and worth indexing for future recall. Don't create entries for every entity you encounter on a page.
+- **Screenshots** — Take screenshots when the user asks, or when visual content is essential to the task (e.g., a chart, a UI state). Note the file path in your response.
+
+### `write_note` vs `save_knowledge`
+
+- **`write_note`**: Creates a freeform markdown note at any vault path. Use for articles, research, project docs, session notes.
+- **`save_knowledge`**: Creates a structured, indexed entry in `Resources/Knowledge/{People|Terms|Organizations}/` with auto-generated frontmatter. These entries are automatically recognized and linked in future conversations. Use sparingly — only for entities the user will want to reference again.
 
 ## Tips
 
