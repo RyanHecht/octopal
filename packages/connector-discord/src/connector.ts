@@ -1,6 +1,6 @@
 import { Client, GatewayIntentBits, Partials, ChannelType, type Message } from "discord.js";
 import type { SessionEvent } from "@github/copilot-sdk";
-import { createLogger, type DiscordConfig } from "@octopal/core";
+import { createLogger, type DiscordConfig, type Source } from "@octopal/core";
 import { splitMessage } from "./messages.js";
 import { DiscordActivityRenderer, type ActivityChannel } from "./activity.js";
 
@@ -16,7 +16,11 @@ export interface ConnectorSessionStore {
   sendOrRecover(
     sessionId: string,
     prompt: string,
-    options?: { inactivityTimeoutMs?: number; onEvent?: (event: SessionEvent) => void },
+    options?: {
+      inactivityTimeoutMs?: number;
+      onEvent?: (event: SessionEvent) => void;
+      onSource?: (source: Source) => void;
+    },
   ): Promise<{ response: { data?: { content?: string } } | undefined; recovered: boolean }>;
 }
 
@@ -186,6 +190,7 @@ export class DiscordConnector {
     try {
       const { response, recovered } = await this.sessionStore.sendOrRecover(sessionId, text, {
         onEvent: (event) => { renderer.onEvent(event).catch(() => {}); },
+        onSource: (source) => { renderer.addSource(source); },
       });
       await renderer.finishSuccess();
       const responseText = response?.data?.content ?? "";
@@ -227,6 +232,7 @@ export class DiscordConnector {
     try {
       const { response, recovered } = await this.sessionStore.sendOrRecover(sessionId, text, {
         onEvent: (event) => { renderer.onEvent(event).catch(() => {}); },
+        onSource: (source) => { renderer.addSource(source); },
       });
       await renderer.finishSuccess();
       const responseText = response?.data?.content ?? "";

@@ -8,7 +8,7 @@
 import type { SessionEvent } from "@github/copilot-sdk";
 import type { Message } from "discord.js";
 import { EmbedBuilder } from "discord.js";
-import { createLogger } from "@octopal/core";
+import { createLogger, type Source } from "@octopal/core";
 
 const log = createLogger("discord-activity");
 
@@ -73,6 +73,7 @@ export class DiscordActivityRenderer {
   private intent = "";
   private tools: ToolEntry[] = [];
   private subagents: SubagentEntry[] = [];
+  private sources: Source[] = [];
   private embedMessage: Message | null = null;
   private continuationMessages: Message[] = [];
   private editTimer: ReturnType<typeof setTimeout> | null = null;
@@ -160,6 +161,16 @@ export class DiscordActivityRenderer {
     }
   }
 
+  /** Add a source that informed this turn */
+  addSource(source: Source): void {
+    // Deduplicate by path (or title if no path)
+    const key = source.path ?? source.title;
+    if (!this.sources.some((s) => (s.path ?? s.title) === key)) {
+      this.sources.push(source);
+      this.scheduleUpdate();
+    }
+  }
+
   /** Flush pending updates immediately (call on turn end) */
   async flush(): Promise<void> {
     if (this.editTimer) {
@@ -202,7 +213,7 @@ export class DiscordActivityRenderer {
     if (!this.dirty && this.embedMessage) return;
     this.dirty = false;
 
-    if (!this.intent && this.tools.length === 0 && this.subagents.length === 0) return;
+    if (!this.intent && this.tools.length === 0 && this.subagents.length === 0 && this.sources.length === 0) return;
 
     const embeds = this.buildEmbeds();
 
@@ -234,19 +245,47 @@ export class DiscordActivityRenderer {
   private buildEmbeds(): EmbedBuilder[] {
     const lines = this.buildActivityLines();
 
-    if (lines.length === 0) {
+    if (lines.length === 0 && this.sources.length === 0) {
       return [this.createEmbed("")];
     }
 
-    const chunks = this.splitIntoChunks(lines, MAX_FIELD_LENGTH);
-    return chunks.map((chunk, i) => {
+    // Build activity embeds first
+    const chunks = lines.length > 0
+      ? this.splitIntoChunks(lines, MAX_FIELD_LENGTH)
+      : [];
+
+    const embeds = chunks.map((chunk, i) => {
       const embed = this.createEmbed(chunk);
-      // Continuation embeds: no title/description, just the overflow field
       if (i > 0) {
         embed.setTitle(null).setDescription(null);
       }
       return embed;
     });
+
+    // If no activity embeds yet, create the base embed
+    if (embeds.length === 0) {
+      embeds.push(this.createEmbed(""));
+    }
+
+    // Append sources field — try on the last embed, overflow into new embed
+    if (this.sources.length > 0) {
+      const sourcesText = this.buildSourcesText();
+      const lastEmbed = embeds[embeds.length - 1];
+      const existingFields = lastEmbed.data.fields?.length ?? 0;
+
+      // Discord allows up to 25 fields per embed; check if we can add one
+      if (existingFields < 25 && sourcesText.length <= MAX_FIELD_LENGTH) {
+        lastEmbed.addFields({ name: "📚 Context", value: sourcesText });
+      } else {
+        // Overflow into a new continuation embed
+        const sourceEmbed = new EmbedBuilder()
+          .setColor(lastEmbed.data.color ?? 0x3498db)
+          .addFields({ name: "📚 Context", value: sourcesText.slice(0, MAX_FIELD_LENGTH) });
+        embeds.push(sourceEmbed);
+      }
+    }
+
+    return embeds;
   }
 
   private createEmbed(fieldContent: string): EmbedBuilder {
@@ -287,6 +326,42 @@ export class DiscordActivityRenderer {
     }
 
     return lines;
+  }
+
+  /** Build compact text for the sources field */
+  private buildSourcesText(): string {
+    const icons: Record<string, string> = {
+      "knowledge-match": "📖",
+      "vault-search": "🔍",
+      "entity-detection": "🏷️",
+    };
+
+    const lines: string[] = [];
+    for (const s of this.sources) {
+      const icon = icons[s.type] ?? "📄";
+      let line = `${icon} ${s.title}`;
+      if (s.confidence != null) {
+        line += ` (${s.confidence.toFixed(2)})`;
+      }
+      lines.push(line);
+    }
+
+    if (lines.join("\n").length > MAX_FIELD_LENGTH) {
+      // Truncate and show count
+      const truncated: string[] = [];
+      let len = 0;
+      for (const line of lines) {
+        if (len + line.length + 1 > MAX_FIELD_LENGTH - 30) {
+          truncated.push(`…and ${lines.length - truncated.length} more`);
+          break;
+        }
+        truncated.push(line);
+        len += line.length + 1;
+      }
+      return truncated.join("\n");
+    }
+
+    return lines.join("\n");
   }
 
   /** Split lines into chunks where each chunk's joined text fits within maxLen */

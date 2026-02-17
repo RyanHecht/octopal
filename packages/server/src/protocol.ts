@@ -145,6 +145,19 @@ export interface ErrorMessage {
   error: string;
 }
 
+export interface ContextSourcesMessage {
+  type: "context.sources";
+  sessionId: string;
+  sources: Array<{
+    type: string;
+    title: string;
+    path?: string;
+    snippet?: string;
+    confidence?: number;
+    metadata?: Record<string, unknown>;
+  }>;
+}
+
 export type DaemonMessage =
   | AuthOkMessage
   | AuthErrorMessage
@@ -156,6 +169,7 @@ export type DaemonMessage =
   | ConnectorAckMessage
   | ConnectorRequestMessage
   | ConnectorReplyMessage
+  | ContextSourcesMessage
   | VaultCommittedMessage
   | VaultErrorMessage
   | ErrorMessage;

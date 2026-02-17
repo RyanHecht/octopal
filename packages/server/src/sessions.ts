@@ -1,5 +1,5 @@
 import type { CopilotSession, SessionEventHandler, AssistantMessageEvent, SessionEvent, Tool } from "@github/copilot-sdk";
-import { createLogger, type OctopalAgent } from "@octopal/core";
+import { createLogger, type OctopalAgent, type Source } from "@octopal/core";
 
 const log = createLogger("sessions");
 
@@ -55,6 +55,7 @@ export class SessionStore {
       await session.destroy();
       this.sessions.delete(sessionId);
     }
+    this.agent.cleanupSession(sessionId);
   }
 
   /** Check if a session exists */
@@ -80,15 +81,26 @@ export class SessionStore {
     prompt: string,
     options?: {
       onEvent?: SessionEventHandler;
+      onSource?: (source: Source) => void;
       inactivityTimeoutMs?: number;
     },
   ): Promise<{ response: AssistantMessageEvent | undefined; recovered: boolean }> {
     const inactivityMs = options?.inactivityTimeoutMs ?? 300_000;
     const session = await this.getOrCreate(sessionId, { onEvent: options?.onEvent });
 
+    // Subscribe to source collector if callback provided
+    const collector = options?.onSource ? this.agent.getSourceCollector(sessionId) : undefined;
+    const unsubSource = collector && options?.onSource
+      ? () => { collector.removeListener("source", options.onSource!); }
+      : undefined;
+    if (collector && options?.onSource) {
+      collector.on("source", options.onSource);
+    }
+
     const done = log.timed(`sendOrRecover ${sessionId}`, "info");
     try {
       const response = await this.sendWithActivityTimeout(session, prompt, inactivityMs);
+      unsubSource?.();
       done();
       return { response, recovered: false };
     } catch (err: unknown) {
@@ -96,16 +108,31 @@ export class SessionStore {
 
       if (message.includes("Session not found")) {
         log.info(`Session ${sessionId} expired server-side, recreating`);
+        unsubSource?.();
         await this.destroy(sessionId);
         const freshSession = await this.getOrCreate(sessionId, { onEvent: options?.onEvent });
-        const response = await this.sendWithActivityTimeout(freshSession, prompt, inactivityMs);
-        done();
-        return { response, recovered: true };
+
+        // Re-subscribe to source collector on the fresh session
+        const freshCollector = options?.onSource ? this.agent.getSourceCollector(sessionId) : undefined;
+        if (freshCollector && options?.onSource) {
+          freshCollector.on("source", options.onSource);
+        }
+
+        try {
+          const response = await this.sendWithActivityTimeout(freshSession, prompt, inactivityMs);
+          done();
+          return { response, recovered: true };
+        } finally {
+          if (freshCollector && options?.onSource) {
+            freshCollector.removeListener("source", options.onSource);
+          }
+        }
       }
 
       // On timeout or other errors, destroy the session to prevent
       // a stale session from breaking subsequent messages.
       log.warn(`Session ${sessionId} error, destroying: ${message}`);
+      unsubSource?.();
       // Flush any incomplete turn data before destroying
       await this.agent.flushSessionLog(sessionId).catch((e) => {
         log.warn("Failed to flush session log on error:", e);

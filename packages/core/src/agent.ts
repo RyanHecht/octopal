@@ -13,6 +13,7 @@ import { SYSTEM_PROMPT } from "./prompts.js";
 import { QmdSearch } from "./qmd.js";
 import { buildSessionHooks, type KnowledgeOperation } from "./hooks.js";
 import { BackgroundTaskManager } from "./background-tasks.js";
+import { TurnSourceCollector } from "./sources.js";
 import { createLogger } from "./log.js";
 import type { OctopalConfig } from "./types.js";
 import type { ConnectorRegistryLike } from "./types.js";
@@ -32,6 +33,7 @@ export class OctopalAgent {
   private connectors?: ConnectorRegistryLike;
   readonly backgroundTasks = new BackgroundTaskManager();
   private sessionLoggers = new Map<string, SessionLogger>();
+  private sourceCollectors = new Map<string, TurnSourceCollector>();
 
   constructor(private config: OctopalConfig) {
     this.client = new CopilotClient({
@@ -117,6 +119,7 @@ export class OctopalAgent {
 
     // Build hooks for automatic knowledge retrieval and ingestion
     const knowledgeOps: KnowledgeOperation[] = [];
+    const sourceCollector = new TurnSourceCollector();
 
     // Create session logger early so hooks can reference it
     let logger: SessionLogger | undefined;
@@ -133,6 +136,7 @@ export class OctopalAgent {
       logger,
       backgroundTasks: this.backgroundTasks,
       sessionId: options?.sessionId,
+      sourceCollector,
     });
 
     const session = await this.client.createSession({
@@ -180,6 +184,11 @@ export class OctopalAgent {
       logger.attach(session);
     }
 
+    // Store source collector for this session
+    if (options?.sessionId) {
+      this.sourceCollectors.set(options.sessionId, sourceCollector);
+    }
+
     return session;
   }
 
@@ -191,6 +200,21 @@ export class OctopalAgent {
     const logger = this.sessionLoggers.get(sessionId);
     if (logger) {
       await logger.flushIncomplete();
+    }
+  }
+
+  /** Get the source collector for a session (if it exists) */
+  getSourceCollector(sessionId: string): TurnSourceCollector | undefined {
+    return this.sourceCollectors.get(sessionId);
+  }
+
+  /** Clean up session-scoped resources (logger, source collector) */
+  cleanupSession(sessionId: string): void {
+    this.sessionLoggers.delete(sessionId);
+    const collector = this.sourceCollectors.get(sessionId);
+    if (collector) {
+      collector.removeAllListeners();
+      this.sourceCollectors.delete(sessionId);
     }
   }
 

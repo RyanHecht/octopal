@@ -49,3 +49,5 @@ export type { BackgroundRun, BackgroundTaskEvents } from "./background-tasks.js"
 export { transformWikilinks, buildVaultFileUrl, buildFileIndex } from "./wikilinks.js";
 export { createLogger, initLogging, setLogLevel, getLogLevel } from "./log.js";
 export type { Logger, LogLevel } from "./log.js";
+export { TurnSourceCollector } from "./sources.js";
+export type { Source, SourceType, TurnSourceEvents } from "./sources.js";

@@ -3,6 +3,7 @@ import type { VaultManager } from "./vault.js";
 import type { QmdSearch } from "./qmd.js";
 import type { SessionLogger } from "./session-logger.js";
 import type { BackgroundTaskManager } from "./background-tasks.js";
+import type { TurnSourceCollector } from "./sources.js";
 import { runPreprocessor, type PreprocessorResult } from "./preprocessor.js";
 import { deterministicMatch, buildKnowledgeIndex } from "./knowledge.js";
 import { createLogger } from "./log.js";
@@ -63,8 +64,10 @@ export function buildSessionHooks(opts: {
   backgroundTasks?: BackgroundTaskManager;
   /** Session ID used to query completed background tasks */
   sessionId?: string;
+  /** Source collector — if provided, emits sources for each matched entry */
+  sourceCollector?: TurnSourceCollector;
 }): SessionHooks {
-  const { client, vault, qmd, knowledgeOps, logger, backgroundTasks, sessionId } = opts;
+  const { client, vault, qmd, knowledgeOps, logger, backgroundTasks, sessionId, sourceCollector } = opts;
   let aliasesModified = false;
 
   return {
@@ -80,6 +83,9 @@ export function buildSessionHooks(opts: {
 
       const doneHook = log.timed("onUserPromptSubmitted");
       const sections: string[] = [];
+
+      // Clear sources from previous turn
+      sourceCollector?.clear();
 
       // Inject completed background task results
       if (backgroundTasks && sessionId) {
@@ -137,6 +143,11 @@ export function buildSessionHooks(opts: {
           sections.push("## Relevant Knowledge Context");
           for (const entry of preprocessed.matched) {
             sections.push(`### ${entry.path}\n\`\`\`\n${entry.content}\n\`\`\``);
+            sourceCollector?.add({
+              type: "knowledge-match",
+              title: entry.path.replace(/^Resources\/Knowledge\//, "").replace(/\.md$/, ""),
+              path: entry.path,
+            });
           }
         }
 
@@ -176,6 +187,13 @@ export function buildSessionHooks(opts: {
                 let line = `- **${r.path}** (relevance: ${r.score.toFixed(2)})`;
                 if (r.snippet) line += `: ${r.snippet.slice(0, 200)}`;
                 sections.push(line);
+                sourceCollector?.add({
+                  type: "vault-search",
+                  title: r.title ?? r.path.replace(/\.md$/, ""),
+                  path: r.path,
+                  snippet: r.snippet,
+                  confidence: r.score,
+                });
               }
             }
           }
@@ -237,6 +255,14 @@ export function buildSessionHooks(opts: {
           if (preprocessed.matched.length > 0) {
             sections.push("**Known entities found in result:** " +
               preprocessed.matched.map((m) => `[[${m.path}]]`).join(", "));
+            for (const m of preprocessed.matched) {
+              sourceCollector?.add({
+                type: "entity-detection",
+                title: m.path.replace(/^Resources\/Knowledge\//, "").replace(/\.md$/, ""),
+                path: m.path,
+                metadata: { toolName },
+              });
+            }
           }
 
           if (preprocessed.newEntities.length > 0) {
@@ -273,6 +299,14 @@ export function buildSessionHooks(opts: {
               const paths = [...matched].slice(0, 5);
               sections.push("**Known entities referenced in result:** " +
                 paths.map((p) => `[[${p}]]`).join(", "));
+              for (const p of paths) {
+                sourceCollector?.add({
+                  type: "entity-detection",
+                  title: p.replace(/^Resources\/Knowledge\//, "").replace(/\.md$/, ""),
+                  path: p,
+                  metadata: { toolName },
+                });
+              }
             }
           }
         }
