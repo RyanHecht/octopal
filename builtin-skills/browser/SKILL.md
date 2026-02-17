@@ -138,7 +138,7 @@ playwright-cli open https://example.com --headed --persistent --profile=~/.octop
 
 ## Vault Integration
 
-Only file things into the vault when the user asks you to, or when content is directly relevant to an active project or area. Don't save things speculatively.
+Use judgment about what's worth saving. Content that's directly relevant to an active project, area, or ongoing task is worth filing. Don't save every page you visit — save things the user is likely to want to reference again.
 
 - **Save reference material** — If the user asks you to save an article, guide, or reference, use `write_note` to create a note in `Resources/` with a summary and the source URL.
 - **Save knowledge entries** — Use `save_knowledge` only when you encounter a specific person, organization, or term that's relevant to the user's work and worth indexing for future recall. Don't create entries for every entity you encounter on a page.
