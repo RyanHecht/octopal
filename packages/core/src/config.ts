@@ -34,6 +34,30 @@ export interface DiscordConfig {
   channels?: string[];
 }
 
+export interface VoiceOpenAIConfig {
+  /** API key for OpenAI STT/TTS. Falls back to OPENAI_API_KEY env var. */
+  apiKey?: string;
+  /** STT model name (default: "whisper-1") */
+  sttModel?: string;
+  /** TTS model name (default: "tts-1") */
+  ttsModel?: string;
+  /** TTS voice (default: "alloy") */
+  ttsVoice?: string;
+}
+
+export interface VoiceConfig {
+  /** STT provider name (default: "openai-whisper") */
+  sttProvider?: string;
+  /** TTS provider name (default: "openai-tts") */
+  ttsProvider?: string;
+  /** VAD silence duration in ms before considering speech ended (default: 800) */
+  vadSilenceMs?: number;
+  /** VAD energy threshold to detect speech, 0–1 (default: 0.01) */
+  vadEnergyThreshold?: number;
+  /** OpenAI-specific voice configuration */
+  openai?: VoiceOpenAIConfig;
+}
+
 export interface OctopalUserConfig {
   /** Git remote URL for the vault repo */
   vaultRemoteUrl?: string;
@@ -49,6 +73,8 @@ export interface OctopalUserConfig {
   scheduler?: SchedulerConfig;
   /** Discord connector configuration */
   discord?: DiscordConfig;
+  /** Voice call configuration (STT/TTS providers, VAD tuning) */
+  voice?: VoiceConfig;
 }
 
 /** Resolved config with all paths filled in */
@@ -70,6 +96,7 @@ export interface ResolvedConfig {
     tickIntervalSeconds: number;
   };
   discord?: DiscordConfig;
+  voice?: VoiceConfig;
 }
 
 /** Commented config template written by `octopal init` */
@@ -117,6 +144,32 @@ export const CONFIG_TEMPLATE = `# Octopal configuration
 
 # Channel IDs where the bot listens and responds (creates threads automatically)
 # channels = []
+
+[voice]
+# STT provider (default: "openai-whisper")
+# sttProvider = "openai-whisper"
+
+# TTS provider (default: "openai-tts")
+# ttsProvider = "openai-tts"
+
+# VAD silence duration in ms before considering speech ended (default: 800)
+# vadSilenceMs = 800
+
+# VAD energy threshold to detect speech, 0-1 (default: 0.01)
+# vadEnergyThreshold = 0.01
+
+[voice.openai]
+# API key for OpenAI STT/TTS (falls back to OPENAI_API_KEY env var)
+# apiKey = ""
+
+# STT model (default: "whisper-1")
+# sttModel = "whisper-1"
+
+# TTS model (default: "tts-1")
+# ttsModel = "tts-1"
+
+# TTS voice (default: "alloy")
+# ttsVoice = "alloy"
 `;
 
 export async function loadConfig(): Promise<ResolvedConfig> {
@@ -208,6 +261,9 @@ export async function loadConfig(): Promise<ResolvedConfig> {
       base.discord.channels = base.discord.channels?.length
         ? base.discord.channels
         : saved.discord.channels ?? [];
+    }
+    if (saved.voice) {
+      base.voice = { ...saved.voice, ...base.voice };
     }
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") {

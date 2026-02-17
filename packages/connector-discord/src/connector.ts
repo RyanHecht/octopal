@@ -1,8 +1,10 @@
 import { Client, GatewayIntentBits, Partials, ChannelType, type Message } from "discord.js";
 import type { SessionEvent } from "@github/copilot-sdk";
-import { createLogger, type DiscordConfig } from "@octopal/core";
+import { createLogger, type DiscordConfig, type VoiceConfig } from "@octopal/core";
+import type { VoicePipelineOptions } from "@octopal/voice";
 import { splitMessage } from "./messages.js";
 import { DiscordActivityRenderer, type ActivityChannel } from "./activity.js";
+import { DiscordVoiceHandler } from "./voice/index.js";
 
 const log = createLogger("discord");
 
@@ -29,6 +31,7 @@ export class DiscordConnector {
   private client: Client;
   private allowedSet: Set<string>;
   private channelSet: Set<string>;
+  private voiceHandler?: DiscordVoiceHandler;
 
   constructor(
     private config: DiscordConfig,
@@ -43,6 +46,7 @@ export class DiscordConnector {
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.GuildVoiceStates,
       ],
       partials: [Partials.Channel, Partials.Message],
     });
@@ -69,13 +73,39 @@ export class DiscordConnector {
       });
     });
 
+    // Start voice handler if configured
+    if (this.voiceHandler) {
+      this.voiceHandler.start();
+    }
+
     await this.client.login(this.config.botToken);
   }
 
   async stop(): Promise<void> {
+    if (this.voiceHandler) {
+      await this.voiceHandler.stopAll();
+    }
     this.client.removeAllListeners();
     await this.client.destroy();
     log.info("Disconnected");
+  }
+
+  /**
+   * Enable voice call support.
+   * Must be called before start(). Requires STT/TTS providers to be configured.
+   */
+  enableVoice(
+    pipelineOptions: Omit<VoicePipelineOptions, "vad">,
+    voiceConfig?: VoiceConfig,
+  ): void {
+    this.voiceHandler = new DiscordVoiceHandler({
+      client: this.client,
+      sessionStore: this.sessionStore,
+      allowedUsers: this.allowedSet,
+      voiceConfig,
+      pipelineOptions,
+    });
+    log.info("Voice support enabled");
   }
 
   private async handleMessage(message: Message): Promise<void> {

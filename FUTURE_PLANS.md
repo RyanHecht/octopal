@@ -49,9 +49,8 @@ Deferred items extracted from 20 Copilot CLI session plans, cross-referenced aga
 - **Status**: ✅ Partially implemented — code-server + VS Code extension provides chat via Agent HQ panel. Dedicated activity panel deferred.
 
 ### Discord Voice Chat
-- **What**: Voice-based interaction via `@discordjs/voice` + opus/sodium, STT/TTS services (Whisper, ElevenLabs)
-- **Blocks**: Voice-based interaction with Octopal
-- **When needed**: Dedicated phase — requires fundamentally different real-time session model
+- **What**: Voice-based interaction via `@discordjs/voice` + opus/sodium, pluggable STT/TTS providers
+- **Status**: ✅ Implemented — `@octopal/voice` package with generic STT/TTS interfaces, VAD, and voice pipeline. Discord voice handler auto-joins channels. Ships with OpenAI Whisper (STT) and OpenAI TTS providers. Configure via `[voice]` in config.toml.
 
 ---
 
