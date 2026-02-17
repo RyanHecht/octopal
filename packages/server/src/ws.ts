@@ -86,6 +86,10 @@ export function registerWebSocket(
     });
 
     socket.on("close", () => {
+      const info = connectorRegistry.get(socket);
+      if (info) {
+        log.info(`Connector "${info.name}" disconnected`);
+      }
       connectorRegistry.unregister(socket);
     });
   });
@@ -194,6 +198,7 @@ function handleConnectorRegister(
 
   log.info(`Connector "${name.trim()}" registered with capabilities: [${(capabilities ?? []).join(", ")}]`);
   socket.send(JSON.stringify({ type: "connector.ack", name: name.trim() }));
+  socket.on("pong", () => { registry.markAlive(socket); });
 }
 
 async function handleConnectorMessage(

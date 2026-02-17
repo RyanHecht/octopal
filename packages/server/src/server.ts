@@ -57,6 +57,7 @@ export async function createServer({ config, host, port }: ServerOptions) {
 
   const sessionStore = new SessionStore(agent);
   const connectorRegistry = new ConnectorRegistry();
+  connectorRegistry.startHeartbeat();
 
   // Make scheduler and connector registry available to agent sessions
   agent.setScheduler(scheduler);

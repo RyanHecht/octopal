@@ -1,5 +1,8 @@
 import type { WebSocket } from "ws";
 import { randomUUID } from "node:crypto";
+import { createLogger } from "@octopal/core";
+
+const log = createLogger("connector-registry");
 
 export interface ConnectorInfo {
   name: string;
@@ -25,10 +28,41 @@ export class ConnectorRegistry {
   private connectors = new Map<WebSocket, ConnectorInfo>();
   private byName = new Map<string, ConnectorInfo>();
   private pending = new Map<string, PendingRequest>();
+  private alive = new Set<WebSocket>();
+  private sweepTimer: ReturnType<typeof setInterval> | null = null;
   private defaultTimeoutMs: number;
 
   constructor(options?: { defaultTimeoutMs?: number }) {
     this.defaultTimeoutMs = options?.defaultTimeoutMs ?? 60_000;
+  }
+
+  /** Start periodic heartbeat pings to all connectors. */
+  startHeartbeat(intervalMs = 30_000): void {
+    this.stopHeartbeat();
+    this.sweepTimer = setInterval(() => {
+      for (const [socket, info] of this.connectors) {
+        if (!this.alive.has(socket)) {
+          log.warn(`Connector "${info.name}" heartbeat timeout, closing`);
+          socket.terminate();
+          continue;
+        }
+        this.alive.delete(socket);
+        socket.ping();
+      }
+    }, intervalMs);
+  }
+
+  /** Stop the heartbeat sweep. */
+  stopHeartbeat(): void {
+    if (this.sweepTimer) {
+      clearInterval(this.sweepTimer);
+      this.sweepTimer = null;
+    }
+  }
+
+  /** Mark a connector socket as alive (call on pong). */
+  markAlive(socket: WebSocket): void {
+    this.alive.add(socket);
   }
 
   /** Register a connector. Returns false if the name is already taken. */
@@ -43,6 +77,7 @@ export class ConnectorRegistry {
     const info: ConnectorInfo = { name, capabilities, metadata, socket };
     this.connectors.set(socket, info);
     this.byName.set(name, info);
+    this.alive.add(socket);
     return true;
   }
 
@@ -53,6 +88,7 @@ export class ConnectorRegistry {
 
     this.connectors.delete(socket);
     this.byName.delete(info.name);
+    this.alive.delete(socket);
 
     // Reject pending requests for this connector
     for (const [requestId, pending] of this.pending) {

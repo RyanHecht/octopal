@@ -28,6 +28,8 @@ export interface RemoteConnectorOptions {
   maxReconnectDelay?: number;
   /** Connection timeout in ms — how long to wait for auth+registration (default: 15000) */
   connectTimeoutMs?: number;
+  /** Heartbeat interval in ms — ping daemon to detect stale connections (default: 30000) */
+  heartbeatIntervalMs?: number;
 }
 
 /**
@@ -41,6 +43,8 @@ export class OctopalRemoteConnector {
   private handlers = new Map<string, CapabilityHandler>();
   private reconnectDelay = 1000;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  private pongReceived = false;
   private stopped = false;
   private log;
 
@@ -62,6 +66,7 @@ export class OctopalRemoteConnector {
   /** Disconnect and stop reconnecting */
   async disconnect(): Promise<void> {
     this.stopped = true;
+    this.stopHeartbeat();
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -146,8 +151,14 @@ export class OctopalRemoteConnector {
       });
 
       ws.on("close", () => {
+        this.stopHeartbeat();
         this.ws = null;
-        if (!this.stopped) {
+        if (!this.stopped && connected) {
+          // Only auto-reconnect from the close handler when we had a
+          // successful registration that then dropped.  For failed
+          // connection attempts the promise rejection path (e.g. the
+          // catch handler in scheduleReconnect) handles rescheduling,
+          // preventing duplicate timers that cause a reconnect storm.
           this.log.info(`Disconnected, reconnecting in ${this.reconnectDelay}ms`);
           this.scheduleReconnect();
         }
@@ -171,6 +182,7 @@ export class OctopalRemoteConnector {
     switch (msg.type) {
       case "connector.ack":
         this.log.info("Registered with daemon");
+        this.startHeartbeat(ws);
         onAck();
         break;
 
@@ -216,9 +228,39 @@ export class OctopalRemoteConnector {
     }
   }
 
+  private startHeartbeat(ws: WebSocket): void {
+    this.stopHeartbeat();
+    this.pongReceived = true;
+    ws.on("pong", () => { this.pongReceived = true; });
+
+    const interval = this.options.heartbeatIntervalMs ?? 30_000;
+    this.heartbeatTimer = setInterval(() => {
+      if (!this.pongReceived) {
+        this.log.warn("Heartbeat timeout, closing connection");
+        ws.terminate();
+        return;
+      }
+      this.pongReceived = false;
+      ws.ping();
+    }, interval);
+  }
+
+  private stopHeartbeat(): void {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
+  }
+
   private scheduleReconnect(): void {
     const autoReconnect = this.options.autoReconnect ?? true;
     if (!autoReconnect || this.stopped) return;
+
+    // Cancel any existing timer to prevent parallel reconnect attempts
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
 
     const maxDelay = this.options.maxReconnectDelay ?? 30_000;
     // Add ±25% jitter to prevent thundering herd
