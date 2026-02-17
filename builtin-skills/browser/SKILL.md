@@ -144,11 +144,6 @@ Use judgment about what's worth saving. Content that's directly relevant to an a
 - **Save knowledge entries** — Use `save_knowledge` only when you encounter a specific person, organization, or term that's relevant to the user's work and worth indexing for future recall. Don't create entries for every entity you encounter on a page.
 - **Screenshots** — Take screenshots when the user asks, or when visual content is essential to the task (e.g., a chart, a UI state). Note the file path in your response.
 
-### `write_note` vs `save_knowledge`
-
-- **`write_note`**: Creates a freeform markdown note at any vault path. Use for articles, research, project docs, session notes.
-- **`save_knowledge`**: Creates a structured, indexed entry in `Resources/Knowledge/{People|Terms|Organizations}/` with auto-generated frontmatter. These entries are automatically recognized and linked in future conversations. Use sparingly — only for entities the user will want to reference again.
-
 ## Tips
 
 - Always `snapshot` after navigation or interaction to see the updated page state
