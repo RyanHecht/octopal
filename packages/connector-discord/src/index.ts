@@ -5,3 +5,5 @@ export { buildDiscordTools } from "./tools.js";
 export type { DiscordToolDeps } from "./tools.js";
 export { DiscordActivityRenderer } from "./activity.js";
 export type { ActivityChannel } from "./activity.js";
+export { DiscordVoiceHandler } from "./voice/index.js";
+export type { VoiceHandlerOptions } from "./voice/index.js";

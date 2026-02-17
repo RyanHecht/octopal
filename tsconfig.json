@@ -20,7 +20,8 @@
     { "path": "packages/cli" },
     { "path": "packages/server" },
     { "path": "packages/connector-discord" },
-    { "path": "packages/connector" }
+    { "path": "packages/connector" },
+    { "path": "packages/voice" }
   ],
   "files": []
 }

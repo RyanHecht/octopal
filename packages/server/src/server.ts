@@ -140,6 +140,25 @@ export async function createServer({ config, host, port }: ServerOptions) {
     };
 
     const discord = new DiscordConnector(config.discord, sessionStore, titleGenerator);
+
+    // Enable voice support if voice config has STT/TTS providers
+    if (config.voice?.sttProvider && config.voice?.ttsProvider) {
+      const { ProviderRegistry, registerBuiltinProviders } = await import("@octopal/voice");
+      const voiceRegistry = new ProviderRegistry();
+      registerBuiltinProviders(voiceRegistry, {
+        openai: config.voice.openai,
+      });
+
+      try {
+        const stt = voiceRegistry.getSTT(config.voice.sttProvider);
+        const tts = voiceRegistry.getTTS(config.voice.ttsProvider);
+        discord.enableVoice({ stt, tts }, config.voice);
+        log.info(`Voice enabled: STT=${stt.name}, TTS=${tts.name}`);
+      } catch (err) {
+        log.error(`Failed to enable voice: ${err instanceof Error ? err.message : err}`);
+      }
+    }
+
     await discord.start();
 
     // Wire background task completions to Discord threads/DMs

@@ -1,19 +1,22 @@
 {
-  "name": "@octopal/connector-discord",
+  "name": "@octopal/voice",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
   "scripts": {
     "build": "tsc",
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@discordjs/opus": "^0.10.0",
-    "@discordjs/voice": "^0.19.0",
     "@octopal/core": "*",
-    "@octopal/voice": "*",
-    "discord.js": "^14.0.0",
-    "sodium-native": "^5.0.10"
+    "openai": "^4.0.0"
   }
 }

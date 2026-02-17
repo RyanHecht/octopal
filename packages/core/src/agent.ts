@@ -9,7 +9,7 @@ import { ParaManager } from "./para.js";
 import { TaskManager } from "./tasks.js";
 import { SessionLogger } from "./session-logger.js";
 import { buildVaultTools } from "./tools.js";
-import { SYSTEM_PROMPT } from "./prompts.js";
+import { SYSTEM_PROMPT, VOICE_PROMPT_ADDENDUM } from "./prompts.js";
 import { QmdSearch } from "./qmd.js";
 import { buildSessionHooks, type KnowledgeOperation } from "./hooks.js";
 import { BackgroundTaskManager } from "./background-tasks.js";
@@ -69,6 +69,8 @@ export class OctopalAgent {
     infiniteSessions?: boolean;
     sessionLogging?: boolean;
     extraTools?: import("@github/copilot-sdk").Tool<any>[];
+    /** Session mode. "voice" applies conversational prompt and filters tools. */
+    mode?: "text" | "voice";
   }): Promise<CopilotSession> {
     const vaultStructure = await this.para.getStructure();
 
@@ -114,6 +116,12 @@ export class OctopalAgent {
       promptContent += `\n\n## Web Viewer\nA web-based vault viewer is available at ${this.config.vaultBaseUrl}. When referencing vault notes, format them as clickable markdown links: [Note Title](${exampleUrl}) instead of [[wikilinks]]. This lets users click through to view the note directly. For notes you're unsure about the path for, use [[wikilinks]] as usual — they'll be resolved automatically.`;
     }
 
+    // Append voice mode instructions when in voice mode
+    const isVoice = options?.mode === "voice";
+    if (isVoice) {
+      promptContent += VOICE_PROMPT_ADDENDUM;
+    }
+
     // Build hooks for automatic knowledge retrieval and ingestion
     const knowledgeOps: KnowledgeOperation[] = [];
 
@@ -152,7 +160,7 @@ export class OctopalAgent {
       ...(options?.sessionId ? { sessionId: options.sessionId } : {}),
       ...(options?.infiniteSessions ? { infiniteSessions: { enabled: true } } : {}),
       tools: [
-        ...buildVaultTools({
+        ...filterTools(buildVaultTools({
           vault: this.vault,
           para: this.para,
           tasks: this.tasks,
@@ -162,7 +170,7 @@ export class OctopalAgent {
           qmd: this.qmd,
           backgroundTasks: this.backgroundTasks,
           getAgent: () => this,
-        }),
+        }), isVoice),
         ...(options?.extraTools ?? []),
       ],
     });
@@ -208,4 +216,23 @@ async function readFileIfExists(filePath: string): Promise<string> {
   } catch {
     return "";
   }
+}
+
+/** Tools allowed in voice mode — read-only vault access + background task management */
+const VOICE_ALLOWED_TOOLS = new Set([
+  "search_vault",
+  "read_note",
+  "read_vault_structure",
+  "list_category",
+  "spawn_background_task",
+  "list_background_tasks",
+  "kill_background_task",
+]);
+
+function filterTools(
+  tools: import("@github/copilot-sdk").Tool<any>[],
+  isVoice: boolean,
+): import("@github/copilot-sdk").Tool<any>[] {
+  if (!isVoice) return tools;
+  return tools.filter((t) => VOICE_ALLOWED_TOOLS.has(t.name));
 }

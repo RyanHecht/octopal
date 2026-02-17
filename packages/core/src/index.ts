@@ -2,7 +2,7 @@ export { OctopalAgent } from "./agent.js";
 export { VaultManager } from "./vault.js";
 export { ParaManager, ParaCategory } from "./para.js";
 export { TaskManager, type Task, TaskStatus, TaskPriority } from "./tasks.js";
-export { SYSTEM_PROMPT, SETUP_PROMPT } from "./prompts.js";
+export { SYSTEM_PROMPT, SETUP_PROMPT, VOICE_PROMPT_ADDENDUM } from "./prompts.js";
 export { buildVaultTools } from "./tools.js";
 export type { ToolDeps } from "./tools.js";
 export {
@@ -30,7 +30,7 @@ export type { QmdSearchResult, SearchScope } from "./qmd.js";
 export { buildSessionHooks, KNOWLEDGE_TOOLS } from "./hooks.js";
 export type { KnowledgeOperation } from "./hooks.js";
 export { loadConfig, saveConfig, isConfigured, CONFIG_TEMPLATE } from "./config.js";
-export type { OctopalUserConfig, ResolvedConfig, ServerConfig, SchedulerConfig, DiscordConfig } from "./config.js";
+export type { OctopalUserConfig, ResolvedConfig, ServerConfig, SchedulerConfig, DiscordConfig, VoiceConfig, VoiceOpenAIConfig } from "./config.js";
 export { Scheduler } from "./scheduler.js";
 export type { SchedulerOptions } from "./scheduler.js";
 export {
