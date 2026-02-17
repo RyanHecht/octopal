@@ -1,5 +1,5 @@
 # --- Build stage ---
-FROM node:24-alpine AS builder
+FROM node:24-slim AS builder
 WORKDIR /app
 
 # Install build dependencies
@@ -17,15 +17,22 @@ COPY packages/ packages/
 RUN npm run build
 
 # --- QMD stage (cached independently) ---
-FROM node:24-alpine AS qmd-builder
-RUN apk add --no-cache python3 make g++ bash curl
-RUN curl -fsSL https://bun.sh/install | bash
+FROM node:24-slim AS qmd-builder
+RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ bash curl unzip ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN curl -fsSL https://bun.sh/install | bash \
+    && export PATH="/root/.bun/bin:$PATH" \
+    && bun install -g https://github.com/tobi/qmd
 ENV PATH="/root/.bun/bin:$PATH"
-RUN bun install -g https://github.com/tobi/qmd
 
 # --- Runtime stage ---
-FROM node:24-alpine
-RUN apk add --no-cache git curl jq bash
+# NOTE: Must use glibc-based image (not Alpine/musl) because the Copilot CLI
+# server bundles a native PTY module (pty.node) that requires glibc.
+FROM node:24-slim
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git curl jq bash ca-certificates \
+    # Chromium + dependencies for playwright-cli browser automation
+    chromium fonts-freefont-ttf \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install GitHub CLI
 RUN curl -fsSL https://github.com/cli/cli/releases/latest/download/gh_$(curl -fsSL https://api.github.com/repos/cli/cli/releases/latest | jq -r '.tag_name | ltrimstr("v")')_linux_amd64.tar.gz \
@@ -36,6 +43,11 @@ RUN curl -fsSL https://github.com/cli/cli/releases/latest/download/gh_$(curl -fs
 # Copy QMD from its build stage (avoids rebuilding native deps every time)
 COPY --from=qmd-builder /root/.bun /root/.bun
 ENV PATH="/root/.bun/bin:$PATH"
+
+# Configure playwright-cli to use system-installed Chromium
+ENV PLAYWRIGHT_MCP_EXECUTABLE_PATH="/usr/bin/chromium"
+ENV PLAYWRIGHT_MCP_NO_SANDBOX=true
+ENV PLAYWRIGHT_MCP_BROWSER=chromium
 
 WORKDIR /app
 

@@ -12,6 +12,7 @@ interface ToolCallRecord {
   name: string;
   args?: unknown;
   result?: string;
+  partialOutput?: string[];
   success?: boolean;
 }
 
@@ -75,14 +76,46 @@ export class SessionLogger {
           record.result = event.data.result?.content;
         }
       }),
+      session.on("tool.execution_partial_result", (event) => {
+        const record = this.toolCallMap.get(event.data.toolCallId);
+        if (record) {
+          if (!record.partialOutput) record.partialOutput = [];
+          record.partialOutput.push(event.data.partialOutput);
+        }
+      }),
       session.on("assistant.turn_end", () => {
         this.flushTurn().catch((err) => {
           log.error("Failed to flush turn:", err);
         });
       }),
+      session.on("session.error", () => {
+        this.flushIncomplete().catch((err) => {
+          log.error("Failed to flush incomplete turn on error:", err);
+        });
+      }),
     ];
 
     return () => unsubs.forEach((fn) => fn());
+  }
+
+  /**
+   * Flush any buffered data from an incomplete turn (e.g., on timeout or error).
+   * Marks incomplete tool calls with ⏳ so they're visible in the log.
+   */
+  async flushIncomplete(): Promise<void> {
+    if (this.toolCalls.length === 0 && this.assistantMessages.length === 0) return;
+
+    // Mark any tool calls without a completion status
+    for (const tc of this.toolCalls) {
+      if (tc.success === undefined) {
+        tc.success = false;
+        if (!tc.result && !tc.partialOutput?.length) {
+          tc.result = "(timed out — no response)";
+        }
+      }
+    }
+
+    await this.flushTurn();
   }
 
   /**
@@ -125,7 +158,7 @@ export class SessionLogger {
   }
 
   private async flushTurn(): Promise<void> {
-    if (!this.userMessage && this.assistantMessages.length === 0) {
+    if (!this.userMessage && this.assistantMessages.length === 0 && this.toolCalls.length === 0) {
       return;
     }
 
@@ -160,8 +193,12 @@ export class SessionLogger {
         const isKnowledge = KNOWLEDGE_TOOLS.has(tc.name);
         const icon = tc.success === false ? "❌" : isKnowledge ? "🧠" : "✅";
         let line = `- ${icon} \`${tc.name}(${argsStr})\``;
-        if (tc.result) {
-          const truncated = truncate(tc.result, MAX_TOOL_RESULT_LENGTH);
+        // Prefer streaming partial output for tools like bash; fall back to final result
+        const output = tc.partialOutput?.length
+          ? tc.partialOutput.join("")
+          : tc.result;
+        if (output) {
+          const truncated = truncate(output, MAX_TOOL_RESULT_LENGTH);
           line += "\n  > " + truncated.replace(/\n/g, "\n  > ");
         }
         lines.push(line);

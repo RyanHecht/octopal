@@ -31,6 +31,7 @@ export class OctopalAgent {
   private scheduler?: Scheduler;
   private connectors?: ConnectorRegistryLike;
   readonly backgroundTasks = new BackgroundTaskManager();
+  private sessionLoggers = new Map<string, SessionLogger>();
 
   constructor(private config: OctopalConfig) {
     this.client = new CopilotClient({
@@ -172,11 +173,25 @@ export class OctopalAgent {
     }
 
     // Attach session logger
-    if (logger) {
+    if (logger && options?.sessionId) {
+      logger.attach(session);
+      this.sessionLoggers.set(options.sessionId, logger);
+    } else if (logger) {
       logger.attach(session);
     }
 
     return session;
+  }
+
+  /**
+   * Flush any incomplete turn data for a session's logger.
+   * Call this before destroying a session on timeout/error.
+   */
+  async flushSessionLog(sessionId: string): Promise<void> {
+    const logger = this.sessionLoggers.get(sessionId);
+    if (logger) {
+      await logger.flushIncomplete();
+    }
   }
 
   /** Send a prompt and wait for the agent to finish processing */

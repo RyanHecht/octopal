@@ -73,9 +73,29 @@ if [ "$HEADED" = "true" ] && [ "$COMMAND" = "open" ]; then
   CMD_ARGS+=("--headed")
 fi
 
-# Use chromium browser (available via 'npx playwright install chromium')
+# Use chromium browser
 if [ "$COMMAND" = "open" ]; then
   CMD_ARGS+=("--browser=chromium")
+  # Use system Chromium if available (e.g., in Docker/Alpine)
+  if [ -n "${PLAYWRIGHT_MCP_EXECUTABLE_PATH:-}" ]; then
+    : # Already configured via env var — playwright-cli reads it directly
+  elif command -v chromium-browser >/dev/null 2>&1; then
+    export PLAYWRIGHT_MCP_EXECUTABLE_PATH="$(command -v chromium-browser)"
+  elif command -v chromium >/dev/null 2>&1; then
+    export PLAYWRIGHT_MCP_EXECUTABLE_PATH="$(command -v chromium)"
+  fi
+  # Required for running Chromium as root in containers
+  if [ "$(id -u)" = "0" ] && [ -z "${PLAYWRIGHT_MCP_NO_SANDBOX:-}" ]; then
+    export PLAYWRIGHT_MCP_NO_SANDBOX=true
+  fi
+fi
+
+# Debug output so hangs are diagnosable
+echo "[browser] exec: $PLAYWRIGHT_CLI $COMMAND ${CMD_ARGS[*]}" >&2
+
+# Check executable-path exists if specified
+if [ -n "${PLAYWRIGHT_MCP_EXECUTABLE_PATH:-}" ] && [ ! -x "$PLAYWRIGHT_MCP_EXECUTABLE_PATH" ]; then
+  echo "[browser] WARNING: $PLAYWRIGHT_MCP_EXECUTABLE_PATH not found or not executable" >&2
 fi
 
 exec "$PLAYWRIGHT_CLI" "$COMMAND" "${CMD_ARGS[@]}"

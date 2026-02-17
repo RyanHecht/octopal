@@ -106,6 +106,10 @@ export class SessionStore {
       // On timeout or other errors, destroy the session to prevent
       // a stale session from breaking subsequent messages.
       log.warn(`Session ${sessionId} error, destroying: ${message}`);
+      // Flush any incomplete turn data before destroying
+      await this.agent.flushSessionLog(sessionId).catch((e) => {
+        log.warn("Failed to flush session log on error:", e);
+      });
       await this.destroy(sessionId);
       done();
       throw err;

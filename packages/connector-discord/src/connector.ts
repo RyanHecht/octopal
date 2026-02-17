@@ -187,7 +187,7 @@ export class DiscordConnector {
       const { response, recovered } = await this.sessionStore.sendOrRecover(sessionId, text, {
         onEvent: (event) => { renderer.onEvent(event).catch(() => {}); },
       });
-      await renderer.flush();
+      await renderer.finishSuccess();
       const responseText = response?.data?.content ?? "";
 
       if (recovered) {
@@ -205,6 +205,7 @@ export class DiscordConnector {
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
       log.error(`Session ${sessionId} error:`, errMsg);
+      await renderer.finishWithError(errMsg).catch(() => {});
       await channel.send("Sorry, something went wrong processing your message.").catch(() => {});
     }
   }
@@ -227,7 +228,7 @@ export class DiscordConnector {
       const { response, recovered } = await this.sessionStore.sendOrRecover(sessionId, text, {
         onEvent: (event) => { renderer.onEvent(event).catch(() => {}); },
       });
-      await renderer.flush();
+      await renderer.finishSuccess();
       const responseText = response?.data?.content ?? "";
 
       if (recovered) {
@@ -245,6 +246,7 @@ export class DiscordConnector {
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
       log.error(`Session ${sessionId} error:`, errMsg);
+      await renderer.finishWithError(errMsg).catch(() => {});
       await channel.send("Sorry, something went wrong processing your message.").catch(() => {});
     } finally {
       clearInterval(typingInterval);

@@ -23,6 +23,7 @@ interface ToolEntry {
   name: string;
   toolCallId: string;
   status: "running" | "done" | "failed";
+  args?: string;
 }
 
 interface SubagentEntry {
@@ -34,6 +35,34 @@ interface SubagentEntry {
 
 const MAX_FIELD_LENGTH = 1024;
 const EDIT_DEBOUNCE_MS = 1500;
+const MAX_ARG_VALUE_LENGTH = 80;
+
+/** Format tool arguments as a compact summary string for display */
+function formatToolArgs(args: unknown): string {
+  if (args == null) return "";
+  if (typeof args !== "object") return String(args);
+
+  const obj = args as Record<string, unknown>;
+  const parts: string[] = [];
+  for (const [key, value] of Object.entries(obj)) {
+    if (value == null) continue;
+    let display: string;
+    if (typeof value === "string") {
+      display = value.length > MAX_ARG_VALUE_LENGTH
+        ? value.slice(0, MAX_ARG_VALUE_LENGTH) + "…"
+        : value;
+    } else if (typeof value === "object") {
+      display = JSON.stringify(value);
+      if (display.length > MAX_ARG_VALUE_LENGTH) {
+        display = display.slice(0, MAX_ARG_VALUE_LENGTH) + "…";
+      }
+    } else {
+      display = String(value);
+    }
+    parts.push(`${key}: ${display}`);
+  }
+  return parts.join(", ");
+}
 
 /**
  * Renders a live-updating embed showing agent activity.
@@ -62,11 +91,20 @@ export class DiscordActivityRenderer {
         break;
 
       case "tool.execution_start":
-        this.tools.push({
-          name: event.data.toolName,
-          toolCallId: event.data.toolCallId,
-          status: "running",
-        });
+        // report_intent calls update the embed header instead of showing as a tool
+        if (event.data.toolName === "report_intent") {
+          const args = event.data.arguments as Record<string, unknown> | undefined;
+          if (args?.intent && typeof args.intent === "string") {
+            this.intent = args.intent;
+          }
+        } else {
+          this.tools.push({
+            name: event.data.toolName,
+            toolCallId: event.data.toolCallId,
+            status: "running",
+            args: formatToolArgs(event.data.arguments),
+          });
+        }
         this.scheduleUpdate();
         break;
 
@@ -114,7 +152,9 @@ export class DiscordActivityRenderer {
       }
 
       case "assistant.turn_end":
-        this.finished = true;
+        // Don't set finished here — multi-turn interactions have multiple
+        // turn_end events. The connector calls flush() or finishWithError()
+        // when the full interaction completes.
         await this.flush();
         break;
     }
@@ -127,6 +167,26 @@ export class DiscordActivityRenderer {
       this.editTimer = null;
     }
     await this.updateEmbed();
+  }
+
+  /** Mark the turn as successfully completed and flush */
+  async finishSuccess(): Promise<void> {
+    this.finished = true;
+    await this.flush();
+  }
+
+  /** Mark the turn as failed and flush (call on timeout/error) */
+  async finishWithError(errorMessage?: string): Promise<void> {
+    // Mark any still-running tools as failed
+    for (const t of this.tools) {
+      if (t.status === "running") t.status = "failed";
+    }
+    for (const a of this.subagents) {
+      if (a.status === "running") a.status = "failed";
+    }
+    this.finished = true;
+    if (errorMessage) this.intent = errorMessage;
+    await this.flush();
   }
 
   private scheduleUpdate(): void {
@@ -191,9 +251,11 @@ export class DiscordActivityRenderer {
 
   private createEmbed(fieldContent: string): EmbedBuilder {
     const elapsed = ((Date.now() - this.startTime) / 1000).toFixed(0);
+    const hasErrors = this.tools.some((t) => t.status === "failed")
+      || this.subagents.some((a) => a.status === "failed");
     const embed = new EmbedBuilder()
-      .setColor(this.finished ? 0x2ecc71 : 0x3498db)
-      .setTitle(this.finished ? "✅ Done" : "🔄 Working…");
+      .setColor(hasErrors ? 0xe74c3c : this.finished ? 0x2ecc71 : 0x3498db)
+      .setTitle(hasErrors ? "❌ Error" : this.finished ? "✅ Done" : "🔄 Working…");
 
     if (this.intent) {
       embed.setDescription(this.intent);
@@ -220,7 +282,8 @@ export class DiscordActivityRenderer {
 
     for (const t of this.tools) {
       const icon = t.status === "running" ? "⏳" : t.status === "done" ? "✅" : "❌";
-      lines.push(`${icon} \`${t.name}\``);
+      const args = t.args ? `(${t.args})` : "";
+      lines.push(`${icon} \`${t.name}${args}\``);
     }
 
     return lines;
