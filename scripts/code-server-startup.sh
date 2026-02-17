@@ -64,7 +64,9 @@ if [ -d "$VAULT_DIR" ] && [ ! -f "$SETTINGS_DIR/settings.json" ]; then
   "files.autoSaveDelay": 2000,
   "foam.edit.linkStyle": "wikilink",
   "foam.openDailyNote.onStartup": false,
-  "workbench.startupEditor": "readme"
+  "workbench.startupEditor": "readme",
+  "git.autorefresh": false,
+  "git.autofetch": false
 }
 SETTINGS
 fi

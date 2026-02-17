@@ -9,6 +9,10 @@ const log = createLogger("vault");
 
 const exec = promisify(execFile);
 
+const LOCK_RETRY_COUNT = 3;
+const LOCK_RETRY_BASE_MS = 200;
+const STALE_LOCK_THRESHOLD_MS = 5_000;
+
 export class VaultManager {
   private writeLock: Promise<void> = Promise.resolve();
 
@@ -154,7 +158,37 @@ export class VaultManager {
 
   private async git(...args: string[]) {
     log.debug("git", ...args);
-    return exec("git", ["-C", this.config.localPath, ...args]);
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await exec("git", ["-C", this.config.localPath, ...args]);
+      } catch (err) {
+        if (!isIndexLockError(err) || attempt >= LOCK_RETRY_COUNT) {
+          // On final retry, try removing a stale lock before giving up
+          if (isIndexLockError(err) && await this.removeStaleIndexLock()) {
+            continue;
+          }
+          throw err;
+        }
+        const delay = LOCK_RETRY_BASE_MS * 2 ** attempt;
+        log.debug(`git index.lock conflict, retrying in ${delay}ms (attempt ${attempt + 1}/${LOCK_RETRY_COUNT})`);
+        await sleep(delay);
+      }
+    }
+  }
+
+  /** Remove .git/index.lock if it exists and is older than the staleness threshold. */
+  private async removeStaleIndexLock(): Promise<boolean> {
+    const lockPath = path.join(this.config.localPath, ".git", "index.lock");
+    try {
+      const stat = await fs.stat(lockPath);
+      const ageMs = Date.now() - stat.mtimeMs;
+      if (ageMs < STALE_LOCK_THRESHOLD_MS) return false;
+      await fs.unlink(lockPath);
+      log.warn(`Removed stale .git/index.lock (age: ${Math.round(ageMs / 1000)}s)`);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   private async walkAndSearch(
@@ -189,4 +223,12 @@ function gitError(err: unknown): string {
     return (err as { stderr: string }).stderr.trim();
   }
   return err instanceof Error ? err.message : String(err);
+}
+
+function isIndexLockError(err: unknown): boolean {
+  return typeof gitError(err) === "string" && gitError(err).includes("index.lock");
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
