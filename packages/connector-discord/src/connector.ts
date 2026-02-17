@@ -16,7 +16,7 @@ export interface ConnectorSessionStore {
   sendOrRecover(
     sessionId: string,
     prompt: string,
-    options?: { timeoutMs?: number; onEvent?: (event: SessionEvent) => void },
+    options?: { inactivityTimeoutMs?: number; onEvent?: (event: SessionEvent) => void },
   ): Promise<{ response: { data?: { content?: string } } | undefined; recovered: boolean }>;
 }
 
