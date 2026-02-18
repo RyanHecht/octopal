@@ -5,21 +5,13 @@ import type { SessionLogger } from "./session-logger.js";
 import type { BackgroundTaskManager } from "./background-tasks.js";
 import type { TurnSourceCollector } from "./sources.js";
 import { runPreprocessor, type PreprocessorResult } from "./preprocessor.js";
-import { deterministicMatch, buildKnowledgeIndex } from "./knowledge.js";
+import { deterministicMatch, getCachedAliasLookup, addAliasToEntry } from "./knowledge.js";
 import { createLogger } from "./log.js";
 
 const log = createLogger("hooks");
 
 /** Extract the SessionHooks type from SessionConfig */
 type SessionHooks = NonNullable<SessionConfig["hooks"]>;
-
-/** Quote an alias for safe insertion into YAML inline arrays */
-function quoteAlias(alias: string): string {
-  if (/[,:\[\]'"#{}|>&*!?@`]/.test(alias)) {
-    return `"${alias.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
-  }
-  return alias;
-}
 
 /** Tools whose results are rich enough to warrant entity detection */
 const PHASE2_TOOLS = new Set([
@@ -115,26 +107,15 @@ export function buildSessionHooks(opts: {
         const donePreprocess = log.timed("preprocessor");
         preprocessed = await runPreprocessor(client, vault, prompt);
         donePreprocess();
-      } catch {
-        // Preprocessor failed — continue without it
+      } catch (e) {
+        log.warn("Preprocessor failed — continuing without it", e);
       }
 
       if (preprocessed) {
         // Auto-apply high-confidence aliases
         for (const { knowledgePath, alias } of preprocessed.newAliases) {
-          try {
-            const content = await vault.readFile(knowledgePath);
-            const aliasMatch = content.match(/^aliases:\s*\[([^\]]*)\]/m);
-            if (aliasMatch) {
-              const existing = aliasMatch[1];
-              const quoted = quoteAlias(alias);
-              const newAliases = existing ? `${existing}, ${quoted}` : quoted;
-              const updated = content.replace(aliasMatch[0], `aliases: [${newAliases}]`);
-              await vault.writeFile(knowledgePath, updated);
-              aliasesModified = true;
-            }
-          } catch {
-            // Skip
+          if (await addAliasToEntry(vault, knowledgePath, alias)) {
+            aliasesModified = true;
           }
         }
 
@@ -182,23 +163,51 @@ export function buildSessionHooks(opts: {
             );
             const newResults = results.filter((r) => !alreadyFound.has(r.path));
             if (newResults.length > 0) {
-              sections.push("\n## Related Vault Notes");
-              for (const r of newResults) {
-                let line = `- **${r.path}** (relevance: ${r.score.toFixed(2)})`;
-                if (r.snippet) line += `: ${r.snippet.slice(0, 200)}`;
-                sections.push(line);
-                sourceCollector?.add({
-                  type: "vault-search",
-                  title: r.title ?? r.path.replace(/\.md$/, ""),
-                  path: r.path,
-                  snippet: r.snippet,
-                  confidence: r.score,
-                });
+              // Split: knowledge entries get full content, others get snippets
+              const knowledgeResults = newResults.filter((r) => r.path.startsWith("Resources/Knowledge/"));
+              const noteResults = newResults.filter((r) => !r.path.startsWith("Resources/Knowledge/"));
+
+              // Load full content for knowledge entries found via QMD
+              if (knowledgeResults.length > 0) {
+                // Add to Relevant Knowledge Context (or create section if preprocessor didn't find any)
+                const hasKnowledgeSection = preprocessed?.matched && preprocessed.matched.length > 0;
+                if (!hasKnowledgeSection) {
+                  sections.push("## Relevant Knowledge Context");
+                }
+                for (const r of knowledgeResults) {
+                  try {
+                    const content = await vault.readFile(r.path);
+                    sections.push(`### ${r.path}\n\`\`\`\n${content}\n\`\`\``);
+                    sourceCollector?.add({
+                      type: "knowledge-match",
+                      title: r.path.replace(/^Resources\/Knowledge\//, "").replace(/\.md$/, ""),
+                      path: r.path,
+                    });
+                  } catch (e) {
+                    log.warn(`Failed to read QMD knowledge match ${r.path}`, e);
+                  }
+                }
+              }
+
+              if (noteResults.length > 0) {
+                sections.push("\n## Related Vault Notes");
+                for (const r of noteResults) {
+                  let line = `- **${r.path}** (relevance: ${r.score.toFixed(2)})`;
+                  if (r.snippet) line += `: ${r.snippet.slice(0, 200)}`;
+                  sections.push(line);
+                  sourceCollector?.add({
+                    type: "vault-search",
+                    title: r.title ?? r.path.replace(/\.md$/, ""),
+                    path: r.path,
+                    snippet: r.snippet,
+                    confidence: r.score,
+                  });
+                }
               }
             }
           }
-        } catch {
-          // QMD search failed — continue without it
+        } catch (e) {
+          log.warn("QMD search failed — continuing without it", e);
         }
       }
 
@@ -270,29 +279,18 @@ export function buildSessionHooks(opts: {
             for (const entity of preprocessed.newEntities) {
               sections.push(`- **${entity.name}** (${entity.categoryHint}): "${entity.context}"`);
             }
-            sections.push("Consider saving relevant entities with `save_knowledge`.");
+            sections.push("Save any newly referenced people, organizations, or systems relevant to the user's work using `save_knowledge`. Search first to avoid duplicates.");
           }
 
           // Auto-apply aliases
           for (const { knowledgePath, alias } of preprocessed.newAliases) {
-            try {
-              const content = await vault.readFile(knowledgePath);
-              const aliasMatch = content.match(/^aliases:\s*\[([^\]]*)\]/m);
-              if (aliasMatch) {
-                const existing = aliasMatch[1];
-                const quoted = quoteAlias(alias);
-                const newAliases = existing ? `${existing}, ${quoted}` : quoted;
-                const updated = content.replace(aliasMatch[0], `aliases: [${newAliases}]`);
-                await vault.writeFile(knowledgePath, updated);
-                aliasesModified = true;
-              }
-            } catch {
-              // Skip
+            if (await addAliasToEntry(vault, knowledgePath, alias)) {
+              aliasesModified = true;
             }
           }
         } else {
           // Phase 1 only (deterministic matching) — free
-          const index = await buildKnowledgeIndex(vault);
+          const index = await getCachedAliasLookup(vault);
           if (index.entries.length > 0) {
             const matched = deterministicMatch(index, text);
             if (matched.size > 0) {
@@ -310,8 +308,8 @@ export function buildSessionHooks(opts: {
             }
           }
         }
-      } catch {
-        // Entity detection failed — don't block
+      } catch (e) {
+        log.warn(`Entity detection failed for ${toolName} — continuing`, e);
       }
 
       if (sections.length === 0) {
@@ -333,16 +331,16 @@ export function buildSessionHooks(opts: {
       if (aliasesModified) {
         try {
           await vault.commitAndPush("auto-applied knowledge aliases");
-        } catch {
-          // Don't fail session teardown
+        } catch (e) {
+          log.warn("Failed to commit alias changes", e);
         }
       }
 
       if (logger) {
         try {
           await logger.writeKnowledgeSummary();
-        } catch {
-          // Don't fail session teardown
+        } catch (e) {
+          log.warn("Failed to write knowledge summary", e);
         }
       }
     },

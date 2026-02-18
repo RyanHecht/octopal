@@ -1,6 +1,7 @@
-import * as fs from "node:fs/promises";
-import * as path from "node:path";
 import type { VaultManager } from "./vault.js";
+import { createLogger } from "./log.js";
+
+const log = createLogger("knowledge");
 
 const KNOWLEDGE_DIR = "Resources/Knowledge";
 const KNOWLEDGE_CATEGORIES = ["People", "Terms", "Organizations"] as const;
@@ -12,14 +13,74 @@ export interface KnowledgeEntry {
   title: string;
   aliases: string[];
   category: string;
-  /** Notes that link to this entry + surrounding context */
-  backlinks: { notePath: string; snippet: string }[];
 }
 
-export interface KnowledgeIndex {
+export interface AliasLookup {
   entries: KnowledgeEntry[];
-  /** Lowercased title/alias → entry path(s) */
+  /** Normalized title/alias → entry path(s) */
   lookup: Map<string, string[]>;
+}
+
+/** For backward compatibility — same shape as AliasLookup */
+export type KnowledgeIndex = AliasLookup;
+
+/**
+ * Normalize a string for matching: strip periods within words, collapse whitespace, lowercase.
+ * Preserves hyphens to avoid false positives (e.g., "re-act" ≠ "react").
+ */
+export function normalize(str: string): string {
+  return str
+    .toLowerCase()
+    .replace(/\./g, "")         // strip all periods ("Dr." → "Dr", "U.S.A." → "USA", "node.js" → "nodejs")
+    .replace(/\s+/g, " ")      // collapse whitespace
+    .trim();
+}
+
+/** Quote an alias for safe insertion into YAML inline arrays */
+export function quoteAlias(alias: string): string {
+  if (/[,:\[\]'"#{}|>&*!?@`]/.test(alias)) {
+    return `"${alias.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+  }
+  return alias;
+}
+
+/**
+ * Add an alias to a knowledge entry's frontmatter.
+ * Returns true if the file was modified.
+ */
+export async function addAliasToEntry(
+  vault: VaultManager,
+  knowledgePath: string,
+  alias: string,
+): Promise<boolean> {
+  try {
+    const content = await vault.readFile(knowledgePath);
+    const aliasMatch = content.match(/^aliases:\s*\[([^\]]*)\]/m);
+    const quoted = quoteAlias(alias);
+    if (aliasMatch) {
+      const existing = aliasMatch[1];
+      // Check if alias already exists (unquoted comparison)
+      const existingAliases = existing.split(",").map((a) => a.trim().replace(/^"|"$/g, ""));
+      if (existingAliases.some((a) => a.toLowerCase() === alias.toLowerCase())) {
+        return false; // Already exists
+      }
+      const newAliases = existing ? `${existing}, ${quoted}` : quoted;
+      const updated = content.replace(aliasMatch[0], `aliases: [${newAliases}]`);
+      await vault.writeFile(knowledgePath, updated);
+    } else {
+      // No aliases line — add one after title
+      const updated = content.replace(/^(title:.*\n)/m, `$1aliases: [${quoted}]\n`);
+      if (updated === content) {
+        log.warn(`Cannot add alias to ${knowledgePath}: no title line found`);
+        return false;
+      }
+      await vault.writeFile(knowledgePath, updated);
+    }
+    return true;
+  } catch (e) {
+    log.warn(`Failed to add alias "${alias}" to ${knowledgePath}`, e);
+    return false;
+  }
 }
 
 /** Parse YAML frontmatter from a markdown string */
@@ -51,17 +112,22 @@ function parseFrontmatter(content: string): Record<string, unknown> {
   return result;
 }
 
-/** Scan Resources/Knowledge/ and build an index of all entries */
-export async function buildKnowledgeIndex(
+/** Scan Resources/Knowledge/ and build a lightweight alias lookup (no vault walk) */
+export async function buildAliasLookup(
   vault: VaultManager,
-): Promise<KnowledgeIndex> {
+): Promise<AliasLookup> {
   const entries: KnowledgeEntry[] = [];
   const lookup = new Map<string, string[]>();
 
-  // Scan knowledge entries
   for (const category of KNOWLEDGE_CATEGORIES) {
     const dirPath = `${KNOWLEDGE_DIR}/${category}`;
-    const files = await vault.listDir(dirPath);
+    let files: string[];
+    try {
+      files = await vault.listDir(dirPath);
+    } catch (e) {
+      log.warn(`Failed to list ${dirPath}`, e);
+      continue;
+    }
 
     for (const file of files) {
       if (!file.endsWith(".md") || file === "README.md") continue;
@@ -81,118 +147,62 @@ export async function buildKnowledgeIndex(
           title,
           aliases,
           category: category.toLowerCase(),
-          backlinks: [],
         };
 
         entries.push(entry);
 
-        // Index by title and aliases
+        // Index by normalized title and aliases
         const keys = [title, ...aliases];
         for (const key of keys) {
-          const lower = key.toLowerCase();
-          const existing = lookup.get(lower) || [];
+          const norm = normalize(key);
+          const existing = lookup.get(norm) || [];
           existing.push(filePath);
-          lookup.set(lower, existing);
+          lookup.set(norm, existing);
         }
-      } catch {
-        // Skip unreadable files
+      } catch (e) {
+        log.warn(`Failed to read knowledge entry ${filePath}`, e);
       }
     }
-  }
-
-  // Collect backlinks from all vault notes
-  if (entries.length > 0) {
-    await collectBacklinks(vault, entries);
   }
 
   return { entries, lookup };
 }
 
-/** Scan all vault .md files for wikilinks to knowledge entries */
-async function collectBacklinks(
-  vault: VaultManager,
-  entries: KnowledgeEntry[],
-): Promise<void> {
-  // Build a map of possible link targets → entry
-  const linkTargetMap = new Map<string, KnowledgeEntry>();
-  for (const entry of entries) {
-    // Match on full path, path without extension, and filename without extension
-    const withoutExt = entry.path.replace(/\.md$/, "");
-    const basename = path.basename(entry.path, ".md");
-    linkTargetMap.set(entry.path.toLowerCase(), entry);
-    linkTargetMap.set(withoutExt.toLowerCase(), entry);
-    linkTargetMap.set(basename.toLowerCase(), entry);
-    // Also match on title
-    linkTargetMap.set(entry.title.toLowerCase(), entry);
+/** @deprecated Use buildAliasLookup instead */
+export const buildKnowledgeIndex = buildAliasLookup;
+
+// --- Cached alias lookup ---
+
+let _cachedLookup: AliasLookup | null = null;
+let _cacheTimestamp = 0;
+const CACHE_TTL = 30_000;
+
+/** Get a cached alias lookup, rebuilding if stale or invalidated */
+export async function getCachedAliasLookup(vault: VaultManager): Promise<AliasLookup> {
+  if (_cachedLookup && Date.now() - _cacheTimestamp < CACHE_TTL) {
+    return _cachedLookup;
   }
-
-  // Wikilink pattern: [[target]] or [[target|display]]
-  const wikilinkRe = /\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g;
-
-  await walkForBacklinks(vault, "", wikilinkRe, linkTargetMap);
+  _cachedLookup = await buildAliasLookup(vault);
+  _cacheTimestamp = Date.now();
+  return _cachedLookup;
 }
 
-async function walkForBacklinks(
-  vault: VaultManager,
-  dirPath: string,
-  wikilinkRe: RegExp,
-  linkTargetMap: Map<string, KnowledgeEntry>,
-): Promise<void> {
-  const items = await vault.listDir(dirPath || ".");
-
-  for (const item of items) {
-    const itemPath = dirPath ? `${dirPath}/${item}` : item;
-
-    if (item.endsWith("/")) {
-      // Directory — recurse (but skip Journal to avoid self-references)
-      const dirName = item.slice(0, -1);
-      if (itemPath === `${KNOWLEDGE_DIR}/Journal`) continue;
-      await walkForBacklinks(
-        vault,
-        dirPath ? `${dirPath}/${dirName}` : dirName,
-        wikilinkRe,
-        linkTargetMap,
-      );
-    } else if (item.endsWith(".md") && item !== "README.md") {
-      // Skip knowledge entries themselves
-      const fullPath = dirPath ? `${dirPath}/${item}` : item;
-      if (fullPath.startsWith(KNOWLEDGE_DIR)) continue;
-
-      try {
-        const content = await vault.readFile(fullPath);
-        const lines = content.split("\n");
-
-        for (const line of lines) {
-          let match: RegExpExecArray | null;
-          wikilinkRe.lastIndex = 0;
-          while ((match = wikilinkRe.exec(line)) !== null) {
-            const target = match[1].trim().toLowerCase();
-            const entry = linkTargetMap.get(target);
-            if (entry) {
-              entry.backlinks.push({
-                notePath: fullPath,
-                snippet: line.trim(),
-              });
-            }
-          }
-        }
-      } catch {
-        // Skip unreadable files
-      }
-    }
-  }
+/** Invalidate the alias lookup cache (call after writes to knowledge entries) */
+export function invalidateAliasCache(): void {
+  _cachedLookup = null;
+  _cacheTimestamp = 0;
 }
 
-/** Phase 1: Deterministic case-insensitive string matching */
+/** Phase 1: Deterministic normalized string matching */
 export function deterministicMatch(
-  index: KnowledgeIndex,
+  index: AliasLookup,
   input: string,
 ): Set<string> {
   const matched = new Set<string>();
-  const lowerInput = input.toLowerCase();
+  const normalizedInput = normalize(input);
 
   for (const [key, paths] of index.lookup) {
-    if (lowerInput.includes(key)) {
+    if (normalizedInput.includes(key)) {
       for (const p of paths) {
         matched.add(p);
       }
@@ -202,8 +212,8 @@ export function deterministicMatch(
   return matched;
 }
 
-/** Format the knowledge index for the semantic preprocessor prompt */
-export function formatIndexForLLM(index: KnowledgeIndex): string {
+/** Format a compact entry roster for the Haiku preprocessor (title + aliases + category, no content/backlinks) */
+export function formatEntryRoster(index: AliasLookup): string {
   if (index.entries.length === 0) return "(no knowledge entries yet)";
 
   const lines: string[] = [];
@@ -212,22 +222,28 @@ export function formatIndexForLLM(index: KnowledgeIndex): string {
     if (entry.aliases.length > 0) {
       line += ` — aliases: ${entry.aliases.join(", ")}`;
     }
-    if (entry.backlinks.length > 0) {
-      const uniqueNotes = [...new Set(entry.backlinks.map((b) => b.notePath))];
-      line += ` — referenced in: ${uniqueNotes.slice(0, 5).join(", ")}`;
-      // Include a few backlink snippets for semantic context
-      const snippets = entry.backlinks
-        .slice(0, 3)
-        .map((b) => b.snippet)
-        .join("; ");
-      if (snippets) {
-        line += ` — context: "${snippets}"`;
-      }
-    }
     lines.push(line);
   }
   return lines.join("\n");
 }
+
+/** Format a compact name list for system prompt injection (~2k tokens for 1000 entries) */
+export function formatEntityNameList(index: AliasLookup): string {
+  if (index.entries.length === 0) return "";
+
+  const items: string[] = [];
+  for (const entry of index.entries) {
+    let item = `${entry.title} [${entry.category}]`;
+    if (entry.aliases.length > 0) {
+      item += ` (aka: ${entry.aliases.join(", ")})`;
+    }
+    items.push(item);
+  }
+  return items.join("\n");
+}
+
+/** @deprecated Use formatEntryRoster instead */
+export const formatIndexForLLM = formatEntryRoster;
 
 /** Slugify a name for use as a filename */
 export function slugify(text: string): string {

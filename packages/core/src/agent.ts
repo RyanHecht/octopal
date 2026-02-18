@@ -12,6 +12,7 @@ import { buildVaultTools } from "./tools.js";
 import { SYSTEM_PROMPT } from "./prompts.js";
 import { QmdSearch } from "./qmd.js";
 import { buildSessionHooks, type KnowledgeOperation } from "./hooks.js";
+import { getCachedAliasLookup, formatEntityNameList } from "./knowledge.js";
 import { BackgroundTaskManager } from "./background-tasks.js";
 import { TurnSourceCollector } from "./sources.js";
 import { createLogger } from "./log.js";
@@ -109,6 +110,17 @@ export class OctopalAgent {
         });
         promptContent += `\n\n## Connected Devices\n${lines.join("\n")}`;
       }
+    }
+
+    // Inject compact entity name list so the model knows what's in the KB
+    try {
+      const aliasLookup = await getCachedAliasLookup(this.vault);
+      const entityList = formatEntityNameList(aliasLookup);
+      if (entityList) {
+        promptContent += `\n\n## Known Knowledge Entries\nThese entities already exist in the knowledge base. Check this list before creating new entries to avoid duplicates:\n${entityList}`;
+      }
+    } catch {
+      // Non-critical — continue without entity list
     }
 
     // Inject web viewer context when available

@@ -14,14 +14,22 @@ export {
 } from "./auth.js";
 export type { TokenPayload } from "./auth.js";
 export {
+  buildAliasLookup,
   buildKnowledgeIndex,
+  getCachedAliasLookup,
+  invalidateAliasCache,
   deterministicMatch,
+  formatEntryRoster,
+  formatEntityNameList,
   formatIndexForLLM,
+  normalize,
+  quoteAlias,
+  addAliasToEntry,
   slugify,
   KNOWLEDGE_DIR,
   KNOWLEDGE_CATEGORIES,
 } from "./knowledge.js";
-export type { KnowledgeEntry, KnowledgeIndex, KnowledgeCategory } from "./knowledge.js";
+export type { KnowledgeEntry, KnowledgeIndex, AliasLookup, KnowledgeCategory } from "./knowledge.js";
 export { SessionLogger } from "./session-logger.js";
 export { runPreprocessor } from "./preprocessor.js";
 export type { PreprocessorResult } from "./preprocessor.js";

@@ -1,10 +1,10 @@
 import { CopilotClient } from "@github/copilot-sdk";
 import type { VaultManager } from "./vault.js";
 import {
-  buildKnowledgeIndex,
+  getCachedAliasLookup,
   deterministicMatch,
-  formatIndexForLLM,
-  type KnowledgeIndex,
+  formatEntryRoster,
+  type AliasLookup,
 } from "./knowledge.js";
 import { createLogger } from "./log.js";
 
@@ -26,15 +26,23 @@ export interface PreprocessorResult {
   newEntities: { name: string; categoryHint: string; context: string }[];
 }
 
-const PREPROCESSOR_PROMPT = `You are a knowledge entity matcher. Given a knowledge index and raw input text, your job is to:
+const PREPROCESSOR_PROMPT = `You are a knowledge entity matcher for a personal knowledge vault. Given a knowledge index and raw input text, your job is to:
 
-1. Identify which known entities from the index are semantically referenced in the input, even if not by exact name.
-2. Classify your confidence for each semantic match:
-   - HIGH (>85%): You're very confident this reference means this entity. The alias should be auto-added.
-   - LOW (<85%): Possible match but uncertain. Flag for human review.
-3. Identify NEW entities (people, organizations, terms) mentioned in the input that don't exist in the knowledge base yet.
+1. **Match known entities**: Identify which entities from the index are semantically referenced in the input, even if not by exact name. Consider nicknames, abbreviations, pronouns with clear antecedents, and contextual references (e.g., "my therapist" → a known therapist, "the project" → an active project).
+2. **Classify confidence**:
+   - HIGH (>85%): Auto-add as alias. Use when the reference clearly and unambiguously maps to exactly one known entity.
+   - LOW (<85%): Flag for human review. Use when the reference could plausibly match but you're not certain.
+3. **Detect new entities** worth tracking. Create entries for:
+   - People the user interacts with or mentions by name (colleagues, contacts, professionals)
+   - Organizations they work with, belong to, or reference specifically
+   - Systems, tools, or products that come up in their work with domain relevance
+   - Terms with domain-specific meaning in the user's context
 
-Consider the entity's aliases, category, and backlink context when matching.
+   Do NOT flag as new entities:
+   - Generic concepts everyone knows (email, meeting, calendar, message)
+   - Well-known platforms used generically (Google, Slack, GitHub, Discord, YouTube) unless the user has a specific relationship
+   - Passing mentions with no relevance to the user's work or interests
+   - Single-word common nouns or verbs
 
 Respond with ONLY valid JSON in this exact format (no markdown fences):
 {
@@ -50,6 +58,21 @@ If there are no semantic matches or new entities, return empty arrays.
 Do NOT include entities that were already matched deterministically (those are listed separately).
 `;
 
+/** Common generic terms that should NOT be flagged as new entities */
+const ENTITY_STOPLIST = new Set([
+  // Generic concepts
+  "email", "meeting", "call", "message", "chat", "thread", "note", "task",
+  "project", "area", "resource", "inbox", "calendar", "schedule", "event",
+  "document", "file", "folder", "page", "link", "url", "api", "server",
+  // Well-known platforms (generic usage)
+  "google", "slack", "github", "discord", "youtube", "twitter", "reddit",
+  "linkedin", "zoom", "teams", "notion", "obsidian", "vscode", "chrome",
+  "firefox", "safari", "windows", "macos", "linux", "android", "ios",
+  // Common actions/concepts
+  "deploy", "build", "test", "release", "update", "install", "config",
+  "setup", "login", "logout", "password", "token", "key", "database",
+]);
+
 /**
  * Run the two-phase preprocessor:
  * Phase 1: Deterministic string matching (no LLM)
@@ -60,8 +83,8 @@ export async function runPreprocessor(
   vault: VaultManager,
   rawInput: string,
 ): Promise<PreprocessorResult> {
-  // Build knowledge index
-  const index = await buildKnowledgeIndex(vault);
+  // Build lightweight alias lookup (cached, no vault walk)
+  const index = await getCachedAliasLookup(vault);
 
   if (index.entries.length === 0) {
     return { matched: [], newAliases: [], triageItems: [], newEntities: [] };
@@ -76,8 +99,8 @@ export async function runPreprocessor(
     try {
       const content = await vault.readFile(p);
       matched.push({ path: p, content });
-    } catch {
-      // Skip unreadable
+    } catch (e) {
+      log.warn("Failed to read deterministic match", e);
     }
   }
 
@@ -91,6 +114,7 @@ export async function runPreprocessor(
     const doneSemantic = log.timed("Semantic match");
     const semanticResult = await runSemanticMatch(
       client,
+      vault,
       index,
       rawInput,
       deterministicPaths,
@@ -104,8 +128,8 @@ export async function runPreprocessor(
         try {
           const content = await vault.readFile(match.knowledgePath);
           matched.push({ path: match.knowledgePath, content });
-        } catch {
-          // Skip
+        } catch (e) {
+          log.warn("Failed to read semantic match", e);
         }
       }
 
@@ -123,9 +147,13 @@ export async function runPreprocessor(
       }
     }
 
-    newEntities.push(...semanticResult.newEntities);
-  } catch {
-    // Semantic matching failed — proceed with deterministic results only
+    // Filter new entities through stoplist
+    const filtered = semanticResult.newEntities.filter(
+      (e) => !ENTITY_STOPLIST.has(e.name.toLowerCase()),
+    );
+    newEntities.push(...filtered);
+  } catch (e) {
+    log.warn("Semantic matching failed — proceeding with deterministic results only", e);
   }
 
   return { matched, newAliases, triageItems, newEntities };
@@ -147,17 +175,35 @@ interface SemanticMatchResult {
 
 async function runSemanticMatch(
   client: CopilotClient,
-  index: KnowledgeIndex,
+  vault: VaultManager,
+  index: AliasLookup,
   rawInput: string,
   alreadyMatched: Set<string>,
 ): Promise<SemanticMatchResult> {
-  const indexText = formatIndexForLLM(index);
+  const indexText = formatEntryRoster(index);
   const matchedList =
     alreadyMatched.size > 0
       ? `\nAlready matched deterministically (do NOT include these): ${[...alreadyMatched].join(", ")}`
       : "";
 
-  const prompt = `## Knowledge Index\n${indexText}\n${matchedList}\n\n## Raw Input\n${rawInput}`;
+  // Inject active project and area names for relevance context
+  let userContext = "";
+  try {
+    const projects = await vault.listDir("Projects");
+    const areas = await vault.listDir("Areas");
+    const projectNames = projects.filter((d) => d.endsWith("/")).map((d) => d.slice(0, -1));
+    const areaNames = areas.filter((d) => d.endsWith("/")).map((d) => d.slice(0, -1));
+    if (projectNames.length > 0 || areaNames.length > 0) {
+      const parts: string[] = [];
+      if (projectNames.length > 0) parts.push(`Projects: ${projectNames.join(", ")}`);
+      if (areaNames.length > 0) parts.push(`Areas: ${areaNames.join(", ")}`);
+      userContext = `\n\n## User Context\nThe user is currently working on: ${parts.join("; ")}. Entities relevant to these are more likely worth tracking.`;
+    }
+  } catch (e) {
+    log.warn("Failed to list projects/areas for preprocessor context", e);
+  }
+
+  const prompt = `## Knowledge Index\n${indexText}\n${matchedList}${userContext}\n\n## Raw Input\n${rawInput}`;
 
   const session = await client.createSession({
     model: "claude-haiku-4.5",

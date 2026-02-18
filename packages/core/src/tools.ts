@@ -6,11 +6,15 @@ import type { VaultManager } from "./vault.js";
 import { type ParaManager, ParaCategory } from "./para.js";
 import { type TaskManager, TaskPriority } from "./tasks.js";
 import { runPreprocessor } from "./preprocessor.js";
+import { addAliasToEntry, getCachedAliasLookup, invalidateAliasCache, normalize, quoteAlias } from "./knowledge.js";
 import type { Scheduler } from "./scheduler.js";
 import { toCron } from "./schedule-types.js";
 import type { ConnectorRegistryLike } from "./types.js";
 import { QmdSearch, scopeToCollections, type SearchScope } from "./qmd.js";
 import type { BackgroundTaskManager } from "./background-tasks.js";
+import { createLogger } from "./log.js";
+
+const log = createLogger("tools");
 
 export interface ToolDeps {
   vault: VaultManager;
@@ -39,21 +43,7 @@ export function buildVaultTools({ vault, para, tasks, client, scheduler, connect
 
         // Auto-apply high-confidence aliases
         for (const { knowledgePath, alias } of preprocessed.newAliases) {
-          try {
-            const content = await vault.readFile(knowledgePath);
-            const aliasMatch = content.match(/^aliases:\s*\[([^\]]*)\]/m);
-            if (aliasMatch) {
-              const existing = aliasMatch[1];
-              const newAliases = existing ? `${existing}, ${alias}` : alias;
-              const updated = content.replace(aliasMatch[0], `aliases: [${newAliases}]`);
-              await vault.writeFile(knowledgePath, updated);
-            } else {
-              const updated = content.replace(/^(title:.*\n)/m, `$1aliases: [${alias}]\n`);
-              await vault.writeFile(knowledgePath, updated);
-            }
-          } catch {
-            // Skip if file can't be read/written
-          }
+          await addAliasToEntry(vault, knowledgePath, alias);
         }
 
         // Format results for the agent
@@ -173,7 +163,7 @@ export function buildVaultTools({ vault, para, tasks, client, scheduler, connect
 
     defineTool("search_vault", {
       description:
-        "Search across the vault using keyword or semantic search. Use the scope parameter to target specific areas: 'all' (default) searches knowledge entries + working notes, 'knowledge' for people/terms/organizations only, 'notes' for projects/areas/resources only, 'sessions' for past conversation logs, 'deep' for high-quality hybrid search with reranking (slower but better for complex queries).",
+        "Search across the vault using keyword or semantic search. Use proactively to find relevant context and to check for existing entries before creating new ones. Use the scope parameter to target specific areas: 'all' (default) searches knowledge entries + working notes, 'knowledge' for people/terms/organizations only, 'notes' for projects/areas/resources only, 'sessions' for past conversation logs, 'deep' for high-quality hybrid search with reranking (slower but better for complex queries).",
       parameters: z.object({
         query: z.string().describe("Search query — keywords or natural language"),
         scope: z
@@ -272,7 +262,7 @@ export function buildVaultTools({ vault, para, tasks, client, scheduler, connect
 
     defineTool("save_knowledge", {
       description:
-        "Create or update a knowledge entry in Resources/Knowledge/. Use when you discover a new person, organization, term, or other reusable fact.",
+        "Create a knowledge entry in Resources/Knowledge/. IMPORTANT: The system will automatically check if this entity already exists — if it does, you'll get the existing content back. In that case, use write_note to update the existing entry instead of creating a duplicate.",
       parameters: z.object({
         category: z
           .enum(["People", "Terms", "Organizations"])
@@ -287,6 +277,21 @@ export function buildVaultTools({ vault, para, tasks, client, scheduler, connect
           .describe("Alternative names/terms for this entity"),
       }),
       handler: async ({ category, name, content, aliases }: any) => {
+        // Check for existing entry with same name/alias (programmatic duplicate prevention)
+        const lookup = await getCachedAliasLookup(vault);
+        const normalizedName = normalize(name);
+        const existingPaths = lookup.lookup.get(normalizedName);
+        if (existingPaths && existingPaths.length > 0) {
+          const existingPath = existingPaths[0];
+          try {
+            const existingContent = await vault.readFile(existingPath);
+            return `Entry already exists at ${existingPath}. Current content:\n\`\`\`\n${existingContent}\n\`\`\`\nUse write_note to update it with merged content.`;
+          } catch (e) {
+            log.warn(`Failed to read existing entry ${existingPath}`, e);
+            return `Entry already exists at ${existingPath}. Use read_note + write_note to update it.`;
+          }
+        }
+
         const slug = name
           .toLowerCase()
           .replace(/[^a-z0-9]+/g, "-")
@@ -295,10 +300,11 @@ export function buildVaultTools({ vault, para, tasks, client, scheduler, connect
         const today = new Date().toISOString().slice(0, 10);
         const aliasLine =
           aliases && aliases.length > 0
-            ? `\naliases: [${aliases.join(", ")}]`
+            ? `\naliases: [${aliases.map((a: string) => quoteAlias(a)).join(", ")}]`
             : "";
         const frontmatter = `---\ntitle: "${name}"${aliasLine}\ncategory: ${category.toLowerCase()}\ncreated: ${today}\n---\n\n`;
         await vault.writeFile(filePath, frontmatter + content);
+        invalidateAliasCache();  // After write so concurrent reads don't miss the file
         return `Saved knowledge entry: ${filePath}`;
       },
     }),
