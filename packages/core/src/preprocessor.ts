@@ -32,11 +32,12 @@ const PREPROCESSOR_PROMPT = `You are a knowledge entity matcher for a personal k
 2. **Classify confidence**:
    - HIGH (>85%): Auto-add as alias. Use when the reference clearly and unambiguously maps to exactly one known entity.
    - LOW (<85%): Flag for human review. Use when the reference could plausibly match but you're not certain.
-3. **Detect new entities** worth tracking. Create entries for:
-   - People the user interacts with or mentions by name (colleagues, contacts, professionals)
-   - Organizations they work with, belong to, or reference specifically
-   - Systems, tools, or products that come up in their work with domain relevance
-   - Terms with domain-specific meaning in the user's context
+3. **Detect new entities** worth tracking. Create entries for anything the user would benefit from you remembering in future conversations:
+   - People they interact with or mention by name (colleagues, contacts, professionals)
+   - Organizations, companies, or services they reference
+   - Products, equipment, systems, or tools they own or use
+   - Terms, concepts, or topics with specific meaning in their context
+   - Any named thing the user has a personal relationship with (their car, their home setup, their doctor's office, etc.)
 
    Do NOT flag as new entities:
    - Generic concepts everyone knows (email, meeting, calendar, message)

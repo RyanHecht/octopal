@@ -137,7 +137,7 @@ export function buildSessionHooks(opts: {
         // Knowledge gaps — entities mentioned but not in KB
         if (preprocessed.newEntities.length > 0) {
           sections.push("\n## Knowledge Gaps Detected");
-          sections.push("These entities were mentioned but don't exist in the knowledge base yet. Consider creating entries with `save_knowledge`:");
+          sections.push("These entities were mentioned but don't exist in the knowledge base yet. Create entries with `save_knowledge`:");
           for (const entity of preprocessed.newEntities) {
             sections.push(`- **${entity.name}** (${entity.categoryHint}): "${entity.context}"`);
           }
