@@ -6,6 +6,7 @@ import type { BackgroundTaskManager } from "./background-tasks.js";
 import type { TurnSourceCollector } from "./sources.js";
 import { runPreprocessor, type PreprocessorResult } from "./preprocessor.js";
 import { deterministicMatch, getCachedAliasLookup, addAliasToEntry } from "./knowledge.js";
+import { writeDiaryEntry, generateObservations } from "./diary.js";
 import { createLogger } from "./log.js";
 
 const log = createLogger("hooks");
@@ -61,6 +62,7 @@ export function buildSessionHooks(opts: {
 }): SessionHooks {
   const { client, vault, qmd, knowledgeOps, logger, backgroundTasks, sessionId, sourceCollector } = opts;
   let aliasesModified = false;
+  const toolSummaries: string[] = [];
 
   return {
     /**
@@ -240,6 +242,14 @@ export function buildSessionHooks(opts: {
         });
       }
 
+      // Track all tool calls for diary summaries
+      const args = input.toolArgs as Record<string, unknown>;
+      const argStr = Object.entries(args)
+        .slice(0, 3)
+        .map(([k, v]) => `${k}: ${typeof v === "string" ? v.slice(0, 60) : JSON.stringify(v)}`)
+        .join(", ");
+      toolSummaries.push(`- ${toolName}(${argStr})`);
+
       // Only run entity detection on data-rich tools
       if (!PHASE1_TOOLS.has(toolName)) return;
 
@@ -324,7 +334,7 @@ export function buildSessionHooks(opts: {
     },
 
     /**
-     * On session end: write knowledge changes summary to session log.
+     * On session end: write diary entry, generate observations, and clean up.
      */
     onSessionEnd: async () => {
       // Commit any auto-applied alias changes
@@ -341,6 +351,25 @@ export function buildSessionHooks(opts: {
           await logger.writeKnowledgeSummary();
         } catch (e) {
           log.warn("Failed to write knowledge summary", e);
+        }
+      }
+
+      // Write diary entry and generate observations (fire-and-forget in parallel)
+      const sessionData = { knowledgeOps, toolSummaries, sessionId };
+      await Promise.all([
+        writeDiaryEntry(client, vault, sessionData).catch((e) =>
+          log.warn("Failed to write diary entry", e),
+        ),
+        generateObservations(client, vault, sessionData).catch((e) =>
+          log.warn("Failed to generate observations", e),
+        ),
+      ]);
+      // Commit diary and observations if anything was written
+      if (toolSummaries.length > 0 || knowledgeOps.length > 0) {
+        try {
+          await vault.commitAndPush("session diary + observations");
+        } catch (e) {
+          log.warn("Failed to commit diary/observations", e);
         }
       }
     },

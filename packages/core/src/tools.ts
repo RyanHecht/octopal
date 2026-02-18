@@ -368,6 +368,44 @@ export function buildVaultTools({ vault, para, tasks, client, scheduler, connect
       },
     }),
 
+    defineTool("save_feedback", {
+      description:
+        "Save behavioral feedback from the user to Meta/feedback.md. Use when the user gives you corrections or preferences about how you should behave — phrases like 'I wish you would...', 'next time please...', 'don't do X', 'you should do Y in these cases'. This helps you improve over time.",
+      parameters: z.object({
+        feedback: z
+          .string()
+          .describe("The user's feedback, quoted or paraphrased concisely"),
+      }),
+      handler: async ({ feedback: fb }: any) => {
+        const feedbackPath = "Meta/feedback.md";
+        const dateStr = new Date().toISOString().slice(0, 10);
+
+        let existing = "";
+        try {
+          existing = await vault.readFile(feedbackPath);
+        } catch {
+          existing = "# Behavioral Feedback\n\n## Feedback Log\n";
+          await vault.writeFile(feedbackPath, existing);
+        }
+
+        // Check if we already have a section for today
+        const todayHeader = `### ${dateStr}`;
+        if (existing.includes(todayHeader)) {
+          // Append to today's section
+          const idx = existing.indexOf(todayHeader);
+          const nextSection = existing.indexOf("\n### ", idx + todayHeader.length);
+          const insertAt = nextSection !== -1 ? nextSection : existing.length;
+          const updated = existing.slice(0, insertAt) + `\n- ${fb}` + existing.slice(insertAt);
+          await vault.writeFile(feedbackPath, updated);
+        } else {
+          // Create today's section
+          await vault.appendToFile(feedbackPath, `\n${todayHeader}\n- ${fb}\n`);
+        }
+
+        return `Saved feedback: "${fb}"`;
+      },
+    }),
+
     // ── Scheduler tools ──────────────────────────────────────────────
 
     defineTool("schedule_task", {

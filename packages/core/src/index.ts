@@ -33,6 +33,7 @@ export type { KnowledgeEntry, KnowledgeIndex, AliasLookup, KnowledgeCategory } f
 export { SessionLogger } from "./session-logger.js";
 export { runPreprocessor } from "./preprocessor.js";
 export type { PreprocessorResult } from "./preprocessor.js";
+export { writeDiaryEntry, generateObservations, getRecentDiary } from "./diary.js";
 export { QmdSearch, scopeToCollections } from "./qmd.js";
 export type { QmdSearchResult, SearchScope } from "./qmd.js";
 export { buildSessionHooks, KNOWLEDGE_TOOLS } from "./hooks.js";

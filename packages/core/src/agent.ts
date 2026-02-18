@@ -13,6 +13,7 @@ import { SYSTEM_PROMPT } from "./prompts.js";
 import { QmdSearch } from "./qmd.js";
 import { buildSessionHooks, type KnowledgeOperation } from "./hooks.js";
 import { getCachedAliasLookup, formatEntityNameList } from "./knowledge.js";
+import { getRecentDiary } from "./diary.js";
 import { BackgroundTaskManager } from "./background-tasks.js";
 import { TurnSourceCollector } from "./sources.js";
 import { createLogger } from "./log.js";
@@ -92,9 +93,54 @@ export class OctopalAgent {
       // No identity file
     }
 
+    // Load behavioral feedback if it exists
+    let feedback = "";
+    try {
+      feedback = await this.vault.readFile("Meta/feedback.md");
+      // Cap at ~2KB to prevent context overflow
+      if (feedback.length > 2048) {
+        feedback = feedback.slice(-2048);
+        const nl = feedback.indexOf("\n");
+        if (nl !== -1) feedback = feedback.slice(nl + 1); // align to line boundary
+      }
+    } catch {
+      // No feedback file
+    }
+
+    // Load agent observations if they exist
+    let observations = "";
+    try {
+      observations = await this.vault.readFile("Meta/observations.md");
+      // Cap at ~2KB
+      if (observations.length > 2048) {
+        observations = observations.slice(-2048);
+        const nl = observations.indexOf("\n");
+        if (nl !== -1) observations = observations.slice(nl + 1);
+      }
+    } catch {
+      // No observations file
+    }
+
+    // Load recent diary entries
+    let diary = "";
+    try {
+      diary = await getRecentDiary(this.vault);
+    } catch {
+      // No diary
+    }
+
     let promptContent = `${SYSTEM_PROMPT}\n\n## Current Vault Structure\n\`\`\`\n${vaultStructure}\n\`\`\``;
     if (identity) {
       promptContent += `\n\n## About the User\n${identity}`;
+    }
+    if (feedback) {
+      promptContent += `\n\n## User Feedback\nThese are behavioral corrections and preferences the user has given you. Follow them:\n${feedback}`;
+    }
+    if (observations) {
+      promptContent += `\n\n## Agent Observations\nYour own observations about the user's communication style and patterns:\n${observations}`;
+    }
+    if (diary) {
+      promptContent += `\n\n## Recent Sessions\nSummaries of recent sessions for continuity:\n${diary}`;
     }
     if (conventions) {
       promptContent += `\n\n## User Conventions\n${conventions}`;
